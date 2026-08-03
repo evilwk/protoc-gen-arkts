@@ -1,0 +1,32 @@
+{
+  "name": "protoc-gen-arkts",
+  "version": "0.4.0",
+  "private": true,
+  "description": "面向 HarmonyOS 的 ArkTS Protobuf message 代码生成器",
+  "license": "Apache-2.0",
+  "author": "evilwk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evilwk/protoc-gen-arkts.git",
+    "directory": "generator"
+  },
+  "type": "module",
+  "bin": {
+    "protoc-gen-arkts": "bin/protoc-gen-arkts.js"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.js"
+  },
+  "dependencies": {
+    "protobufjs": "7.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.1.0",
+    "typescript": "5.8.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package fixture.complex;
+
+import "shared.proto";
+
+message Envelope {
+  message Nested {
+    int32 id = 1;
+  }
+
+  enum State {
+    STATE_UNKNOWN = 0;
+    STATE_READY = 1;
+  }
+
+  repeated int32 values = 1;
+  repeated string labels = 2;
+  repeated SharedItem items = 3;
+  map<string, SharedItem> item_by_name = 4;
+  Nested nested = 5;
+  State state = 6;
+
+  oneof contact {
+    string email = 7;
+    int32 phone = 8;
+    SharedItem profile = 9;
+  }
+}

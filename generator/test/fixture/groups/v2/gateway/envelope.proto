@@ -1,0 +1,9 @@
+syntax = "proto3";
+package interop.v2.gateway;
+
+import "common/shared.proto";
+
+message V2Envelope {
+  interop.legacy.common.LegacyShared shared = 1;
+  string trace = 2;
+}

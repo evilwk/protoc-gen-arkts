@@ -1,0 +1,20 @@
+**/node_modules/
+**/oh_modules/
+**/build/
+**/dist/
+**/BuildProfile.ets
+**/.hvigor/
+**/.idea/
+**/.DS_Store
+local.properties
+.ohpmrc
+.ssh_ohpm/
+*.har
+*.hap
+*.app
+*.log
+
+# agent
+.agent
+.codex
+.claude

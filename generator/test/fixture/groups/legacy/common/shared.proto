@@ -1,0 +1,6 @@
+syntax = "proto3";
+package interop.legacy.common;
+
+message LegacyShared {
+  string id = 1;
+}

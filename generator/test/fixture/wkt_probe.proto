@@ -1,0 +1,8 @@
+syntax = "proto3";
+package fixture.wkt;
+
+import "google/protobuf/timestamp.proto";
+
+message WktProbe {
+  google.protobuf.Timestamp created_at = 1;
+}

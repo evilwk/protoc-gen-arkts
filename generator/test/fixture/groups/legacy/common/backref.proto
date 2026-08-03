@@ -1,0 +1,8 @@
+syntax = "proto3";
+package interop.legacy.common;
+
+import "gateway/envelope.proto";
+
+message LegacyBackref {
+  interop.v2.gateway.V2Envelope envelope = 1;
+}

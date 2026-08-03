@@ -1,0 +1,11 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "验证本地 runtime HAR 可被示例应用安装和编译",
+  "main": "",
+  "author": "evilwk",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "protoc-gen-arkts-runtime": "file:../runtime"
+  }
+}

@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package fixture.complex;
+
+message SharedItem {
+  string value = 1;
+  string detail = 2;
+}

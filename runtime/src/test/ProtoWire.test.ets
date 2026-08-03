@@ -1,0 +1,204 @@
+import { collections } from '@kit.ArkTS';
+import { describe, expect, it } from '@ohos/hypium';
+import { ProtoReader, ProtoWireType, ProtoWriter } from '../main/ets/ProtoWire';
+
+function didThrow(action: () => void): boolean {
+  try {
+    action();
+    return false;
+  } catch (_error) {
+    return true;
+  }
+}
+
+function assertBytes(actual: collections.Uint8Array, expected: number[]): void {
+  expect(actual.length).assertEqual(expected.length);
+  for (let index: number = 0; index < expected.length; index++) {
+    expect(actual[index]).assertEqual(expected[index]);
+  }
+}
+
+export default function protoWireTest(): void {
+  describe('ProtoWireTest', () => {
+    it('encodesIntegerWireVectors', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeInt32(-1);
+      writer.writeUInt32(0xffffffff);
+      writer.writeUInt64(0xffffffffffffffffn);
+
+      assertBytes(writer.finish(), [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
+        0xff, 0xff, 0xff, 0xff, 0x0f,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01
+      ]);
+    });
+
+    it('roundTripsIntegerBoundaries', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeInt32(-0x80000000);
+      writer.writeInt32(0x7fffffff);
+      writer.writeUInt32(0xffffffff);
+      writer.writeInt64(-0x8000000000000000n);
+      writer.writeInt64(0x7fffffffffffffffn);
+      writer.writeUInt64(0xffffffffffffffffn);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readInt32()).assertEqual(-0x80000000);
+      expect(reader.readInt32()).assertEqual(0x7fffffff);
+      expect(reader.readUInt32()).assertEqual(0xffffffff);
+      expect(reader.readInt64() === -0x8000000000000000n).assertTrue();
+      expect(reader.readInt64() === 0x7fffffffffffffffn).assertTrue();
+      expect(reader.readUInt64() === 0xffffffffffffffffn).assertTrue();
+      expect(reader.isAtEnd()).assertTrue();
+    });
+
+    it('encodesZigZagWireVectorsAndBoundaries', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeSInt32(0);
+      writer.writeSInt32(-1);
+      writer.writeSInt32(1);
+      writer.writeSInt32(-0x80000000);
+      writer.writeSInt64(-0x8000000000000000n);
+      writer.writeSInt64(0x7fffffffffffffffn);
+
+      const bytes: collections.Uint8Array = writer.finish();
+      assertBytes(collections.Uint8Array.from([bytes[0], bytes[1], bytes[2]]), [0x00, 0x01, 0x02]);
+
+      const reader: ProtoReader = new ProtoReader(bytes);
+      expect(reader.readSInt32()).assertEqual(0);
+      expect(reader.readSInt32()).assertEqual(-1);
+      expect(reader.readSInt32()).assertEqual(1);
+      expect(reader.readSInt32()).assertEqual(-0x80000000);
+      expect(reader.readSInt64() === -0x8000000000000000n).assertTrue();
+      expect(reader.readSInt64() === 0x7fffffffffffffffn).assertTrue();
+    });
+
+    it('usesLittleEndianForFixedIntegers', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeFixed32(0x78563412);
+      writer.writeSFixed32(-2);
+      writer.writeFixed64(0x0807060504030201n);
+      writer.writeSFixed64(-2n);
+
+      assertBytes(writer.finish(), [
+        0x12, 0x34, 0x56, 0x78,
+        0xfe, 0xff, 0xff, 0xff,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+      ]);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readFixed32()).assertEqual(0x78563412);
+      expect(reader.readSFixed32()).assertEqual(-2);
+      expect(reader.readFixed64() === 0x0807060504030201n).assertTrue();
+      expect(reader.readSFixed64() === -2n).assertTrue();
+    });
+
+    it('roundTripsFloatingPointSpecialValues', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeFloat(1.5);
+      writer.writeFloat(Number.NaN);
+      writer.writeDouble(Number.POSITIVE_INFINITY);
+      writer.writeDouble(Number.NEGATIVE_INFINITY);
+      writer.writeDouble(-0);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readFloat()).assertEqual(1.5);
+      expect(Number.isNaN(reader.readFloat())).assertTrue();
+      expect(reader.readDouble()).assertEqual(Number.POSITIVE_INFINITY);
+      expect(reader.readDouble()).assertEqual(Number.NEGATIVE_INFINITY);
+      expect(1 / reader.readDouble()).assertEqual(Number.NEGATIVE_INFINITY);
+    });
+
+    it('roundTripsBoolStringAndBytesIncludingEmptyString', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeBool(false);
+      writer.writeBool(true);
+      writer.writeString('');
+      writer.writeString('鸿蒙 protobuf');
+      writer.writeBytes(collections.Uint8Array.from([0x00, 0x80, 0xff]));
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readBool()).assertFalse();
+      expect(reader.readBool()).assertTrue();
+      expect(reader.readString()).assertEqual('');
+      expect(reader.readString()).assertEqual('鸿蒙 protobuf');
+      const bytes: collections.Uint8Array = reader.readBytes();
+      assertBytes(bytes, [0x00, 0x80, 0xff]);
+    });
+
+    it('supportsPackedAndUnpackedComposition', 0, () => {
+      const packedWriter: ProtoWriter = new ProtoWriter();
+      packedWriter.writeSInt32(-1);
+      packedWriter.writeSInt32(0);
+      packedWriter.writeSInt32(1);
+
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
+      writer.writeBytes(packedWriter.finish());
+      writer.writeTag(1, ProtoWireType.VARINT);
+      writer.writeSInt32(-2);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readTag()).assertEqual(0x0a);
+      const packedReader: ProtoReader = new ProtoReader(reader.readBytes());
+      expect(packedReader.readSInt32()).assertEqual(-1);
+      expect(packedReader.readSInt32()).assertEqual(0);
+      expect(packedReader.readSInt32()).assertEqual(1);
+      expect(packedReader.isAtEnd()).assertTrue();
+      expect(reader.readTag()).assertEqual(0x08);
+      expect(reader.readSInt32()).assertEqual(-2);
+    });
+
+    it('skipsEveryUnknownWireTypeAndContinues', 0, () => {
+      const bytes: collections.Uint8Array = collections.Uint8Array.from([
+        0x10, 0x96, 0x01,
+        0x19, 1, 2, 3, 4, 5, 6, 7, 8,
+        0x22, 0x03, 0xaa, 0xbb, 0xcc,
+        0x2b, 0x08, 0x01, 0x2c,
+        0x35, 9, 8, 7, 6,
+        0x08, 0x2a
+      ]);
+      const reader: ProtoReader = new ProtoReader(bytes);
+
+      for (let index: number = 0; index < 5; index++) {
+        const tag: number = reader.readTag();
+        reader.skipField(Math.floor(tag / 8), tag & 0x07);
+      }
+      expect(reader.readTag()).assertEqual(0x08);
+      expect(reader.readInt32()).assertEqual(42);
+    });
+
+    it('rejectsOutOfRangeWriterValues', 0, () => {
+      expect(didThrow((): void => new ProtoWriter().writeInt32(0x80000000))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeUInt32(-1))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeUInt32(1.5))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeInt64(0x8000000000000000n))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeUInt64(-1n))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeFixed32(0x100000000))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeTag(0, ProtoWireType.VARINT))).assertTrue();
+      expect(didThrow((): void => new ProtoWriter().writeTag(1, 6))).assertTrue();
+    });
+
+    it('rejectsMalformedAndTruncatedInput', 0, () => {
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x00])).readTag())).assertTrue();
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x0e])).readTag())).assertTrue();
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([
+        0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80
+      ])).readInt64())).assertTrue();
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([1, 2, 3])).readFixed32())).assertTrue();
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x03, 0x41])).readString())).assertTrue();
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x01, 0xff])).readString())).assertTrue();
+      expect(didThrow((): void => {
+        const reader: ProtoReader = new ProtoReader(collections.Uint8Array.from([0x0b, 0x14]));
+        const tag: number = reader.readTag();
+        reader.skipField(Math.floor(tag / 8), tag & 0x07);
+      })).assertTrue();
+      expect(didThrow((): void => {
+        const reader: ProtoReader = new ProtoReader(collections.Uint8Array.from([0x0b, 0x08, 0x01]));
+        const tag: number = reader.readTag();
+        reader.skipField(Math.floor(tag / 8), tag & 0x07);
+      })).assertTrue();
+    });
+  });
+}

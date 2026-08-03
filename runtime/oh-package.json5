@@ -1,0 +1,17 @@
+{
+  "name": "protoc-gen-arkts-runtime",
+  "version": "1.0.0",
+  "description": "protoc-gen-arkts 生成代码使用的纯 ArkTS Protobuf wire runtime",
+  "keywords": ["protobuf"],
+  "main": "Index.ets",
+  "author": {
+    "name": "evilwk",
+    "email": "evilwk@gmail.com",
+    "url": "https://github.com/evilwk"
+  },
+  "homepage": "https://github.com/evilwk/protoc-gen-arkts",
+  "repository": "https://github.com/evilwk/protoc-gen-arkts.git",
+  "license": "Apache-2.0",
+  "artifactType": "original",
+  "dependencies": {}
+}
