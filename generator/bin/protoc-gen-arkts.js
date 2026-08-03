@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { runPlugin } from '../dist/index.js';
+import { PLUGIN_VERSION } from '../dist/version.js';
 
 if (process.argv.includes('--version')) {
-  process.stdout.write('protoc-gen-arkts 0.4.0\n');
+  process.stdout.write(`protoc-gen-arkts ${PLUGIN_VERSION}\n`);
   process.exit(0);
 }
 

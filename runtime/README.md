@@ -10,7 +10,7 @@
 
 ## 安装
 
-中心仓发布后，在应用或 HAR 模块目录执行：
+在应用或 HAR 模块目录执行：
 
 ```shell
 ohpm install protoc-gen-arkts-runtime
@@ -21,12 +21,12 @@ ohpm install protoc-gen-arkts-runtime
 ```json5
 {
   dependencies: {
-    "protoc-gen-arkts-runtime": "^1.0.0",
+    "protoc-gen-arkts-runtime": "^1.0.2",
   },
 }
 ```
 
-发布前或本地开发时，也可以直接依赖 release HAR：
+调试本地构建的 release HAR 时，也可以使用文件依赖：
 
 ```json5
 {
@@ -45,8 +45,12 @@ import { ProtoReader, ProtoWireType, ProtoWriter } from "protoc-gen-arkts-runtim
 生成代码时，将同一包名传给生成器：
 
 ```shell
+npm install --save-dev protoc-gen-arkts
+```
+
+```shell
 protoc \
-  --plugin=protoc-gen-arkts=generator/bin/protoc-gen-arkts.js \
+  --plugin=protoc-gen-arkts=./node_modules/.bin/protoc-gen-arkts \
   --arkts_out=runtime_import=protoc-gen-arkts-runtime:entry/src/main/ets/generated \
   your.proto
 ```

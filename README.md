@@ -21,13 +21,26 @@
 
 ## 快速开始
 
-克隆仓库并构建生成器：
+在项目中安装生成器：
 
 ```shell
-git clone git@github.com:evilwk/protoc-gen-arkts.git
-cd protoc-gen-arkts/generator
-npm ci
-npm run build
+npm install --save-dev protoc-gen-arkts
+```
+
+在 HarmonyOS 应用或 HAR 模块目录安装生成代码依赖的 runtime：
+
+```shell
+ohpm install protoc-gen-arkts-runtime
+```
+
+也可以直接在该模块的 `oh-package.json5` 中声明：
+
+```json5
+{
+  dependencies: {
+    "protoc-gen-arkts-runtime": "^1.0.2",
+  },
+}
 ```
 
 假设项目中存在 `proto/greeting.proto`，可以执行：
@@ -36,22 +49,12 @@ npm run build
 mkdir -p entry/src/main/ets/generated
 protoc \
   -I proto \
-  --plugin=protoc-gen-arkts=generator/bin/protoc-gen-arkts.js \
+  --plugin=protoc-gen-arkts=./node_modules/.bin/protoc-gen-arkts \
   --arkts_out=runtime_import=protoc-gen-arkts-runtime:entry/src/main/ets/generated \
   greeting.proto
 ```
 
-在应用模块的 `oh-package.json5` 中通过本地路径依赖 runtime：
-
-```json5
-{
-  dependencies: {
-    "protoc-gen-arkts-runtime": "file:../../protoc-gen-arkts/runtime",
-  },
-}
-```
-
-`runtime_import` 必须和依赖名一致。若不想引入本地 HAR，也可以把 `runtime/src/main/ets/ProtoWire.ets` 复制到项目中，再将 `runtime_import` 设置为生成文件到该文件的相对路径。
+`runtime_import` 必须和依赖名一致。如需将 runtime 源码直接纳入项目，也可以复制 `runtime/src/main/ets/ProtoWire.ets`，再将 `runtime_import` 设置为生成文件到该文件的相对路径。
 
 完整可运行的生成命令见 [基础示例](examples/basic/README.md)。
 
@@ -80,8 +83,11 @@ docs/            架构、兼容性与维护说明
 
 ## 开发与验证
 
+从源码参与开发时，再克隆仓库并安装生成器依赖：
+
 ```shell
-cd generator
+git clone git@github.com:evilwk/protoc-gen-arkts.git
+cd protoc-gen-arkts/generator
 npm ci
 npm test
 

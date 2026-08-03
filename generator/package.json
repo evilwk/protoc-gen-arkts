@@ -1,10 +1,24 @@
 {
   "name": "protoc-gen-arkts",
   "version": "0.4.0",
-  "private": true,
   "description": "面向 HarmonyOS 的 ArkTS Protobuf message 代码生成器",
+  "keywords": [
+    "arkts",
+    "harmonyos",
+    "protobuf",
+    "protoc",
+    "code-generator"
+  ],
   "license": "Apache-2.0",
-  "author": "evilwk",
+  "author": {
+    "name": "evilwk",
+    "email": "evilwk@gmail.com",
+    "url": "https://github.com/evilwk"
+  },
+  "homepage": "https://github.com/evilwk/protoc-gen-arkts#readme",
+  "bugs": {
+    "url": "https://github.com/evilwk/protoc-gen-arkts/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/evilwk/protoc-gen-arkts.git",
@@ -14,10 +28,16 @@
   "bin": {
     "protoc-gen-arkts": "bin/protoc-gen-arkts.js"
   },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/*.test.js"
+    "test": "npm run build && node --test test/*.test.js",
+    "prepack": "npm test"
   },
   "dependencies": {
     "protobufjs": "7.6.5"
@@ -28,5 +48,9 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

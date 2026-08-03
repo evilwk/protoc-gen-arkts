@@ -13,8 +13,7 @@ import {
   toUpperCamel
 } from '../naming.js';
 import { ArkTSMessageRenderer } from './message-renderer.js';
-
-const PLUGIN_VERSION = '0.4.0';
+import { PLUGIN_VERSION } from '../version.js';
 
 /**
  * 持有单文件渲染上下文，负责 import 规划和顶层声明组装。

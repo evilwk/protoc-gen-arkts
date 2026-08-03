@@ -11,10 +11,11 @@ import {
   plugin,
   vectorDir
 } from './helpers.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 test('reports the locked plugin version', () => {
   const output = execFileSync(process.execPath, [plugin, '--version'], { encoding: 'utf8' });
-  assert.equal(output, 'protoc-gen-arkts 0.4.0\n');
+  assert.equal(output, `protoc-gen-arkts ${packageJson.version}\n`);
 });
 
 test('generates deterministic ArkTS and ignores services', () => {
