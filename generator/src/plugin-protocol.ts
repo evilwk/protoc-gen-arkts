@@ -1,8 +1,8 @@
-import protobuf from 'protobufjs';
+import protobuf, { IField } from 'protobufjs';
 import descriptor, {
   type IFileDescriptorProto
 } from 'protobufjs/ext/descriptor/index.js';
-import type { GeneratedFile, GeneratorRequest } from './model/types.js';
+import type { GeneratedFile, GeneratorRequest } from './model/plugin.js';
 
 const { Reader, Writer } = protobuf;
 
@@ -28,21 +28,21 @@ export function decodeRequest(input: Uint8Array): GeneratorRequest {
     // tag 高位是字段号，低 3 位是 wire type
     switch (tag >>> 3) {
       case REQUEST_FILE_TO_GENERATE_FIELD:
-        // repeated string file_to_generate：本次 protoc 要求插件生成的 proto 文件。
+        // protoc 要求插件生成的 proto 文件。
         filesToGenerate.push(reader.string());
         break;
       case REQUEST_PARAMETER_FIELD:
-        // optional string parameter：--arkts_out 中冒号前传入的插件参数。
+        // --arkts_out 中冒号前传入的插件参数。
         parameter = reader.string();
         break;
       case REQUEST_PROTO_FILE_FIELD: {
-        // repeated FileDescriptorProto proto_file：含输入文件及其 import 依赖的完整描述。
+        // 含输入文件及其 import 依赖的完整描述。
         const length: number = reader.uint32();
         const message = descriptor.FileDescriptorProto.decode(reader, length);
-        protoFiles.push(descriptor.FileDescriptorProto.toObject(message, {
-          arrays: true,
-          objects: true
-        }) as IFileDescriptorProto);
+        const protoFile = descriptor.FileDescriptorProto.toObject(
+          message, { arrays: true, objects: true }
+        ) as IFileDescriptorProto;
+        protoFiles.push(protoFile);
         break;
       }
       default:

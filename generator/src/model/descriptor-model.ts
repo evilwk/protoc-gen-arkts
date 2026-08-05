@@ -4,7 +4,8 @@ import type {
   IFileDescriptorProto
 } from 'protobufjs/ext/descriptor/index.js';
 import { outputName, requireProtoIdentifier, toUpperCamel } from '../naming.js';
-import type { FileModel, PluginOptions, TypeSymbol } from './types.js';
+import type { PluginOptions } from './plugin.js';
+import type { FileModel, TypeSymbol } from './symbols.js';
 
 /**
  * 已校验的 descriptor 文件与符号索引。
@@ -49,7 +50,10 @@ export class DescriptorModel {
 
   public requireOutputName(file: FileModel, context: string): string {
     if (file.outputName === undefined) {
-      throw new Error(`${context}: dependency "${file.fileName}" does not belong to any protocol source group`);
+      throw new Error(
+        `${context}: dependency "${file.fileName}" is imported but not generated; ` +
+        `pass it to protoc or declare its root with dep_root`
+      );
     }
     return file.outputName;
   }
@@ -124,123 +128,191 @@ class DescriptorModelBuilder {
   }
 
   /**
-   * 按组分次生成时，本次 `file_to_generate` 内的文件使用本组前缀，另一组
-   * 清单内的依赖使用另一组前缀。
+   * 本次 `file_to_generate` 内的文件使用 `output_prefix`，`dep_root` 遍历到的依赖使用 `dep_prefix`。
+   * 两者都不匹配的文件不参与生成也不参与 import，返回 undefined 由调用方按需报错。
    */
   private resolveOutputName(fileName: string): string | undefined {
+    const { outputPrefix, depPrefix, depFiles } = this.options;
     const relative: string = outputName(fileName);
     if (this.generated.has(fileName)) {
-      return this.options.groupPrefix.length === 0
-        ? relative
-        : `${this.options.groupPrefix}/${relative}`;
+      return withPrefix(outputPrefix, relative);
     }
-    if (this.options.otherGroupFiles.has(fileName)) {
-      return `${this.options.otherGroupPrefix}/${relative}`;
+    if (depFiles.has(fileName)) {
+      return withPrefix(depPrefix, relative);
     }
-    // 未声明分组时保持单组无前缀行为，便于插件单测和单组生成继续使用。
-    return this.options.groupPrefix.length === 0 && this.options.otherGroupPrefix.length === 0
-      ? relative
-      : undefined;
+    return undefined;
   }
 
   private collectFileSymbols(file: FileModel): void {
-    const packagePrefix: string = file.file.package ? `.${file.file.package}` : '';
-    const localNames: Map<string, string> = new Map();
+    new FileSymbolCollector(file, this.symbols).collect();
+  }
+}
 
-    const add = (symbol: TypeSymbol): void => {
-      const existing: TypeSymbol | undefined = this.symbols.get(symbol.fullName);
-      if (existing !== undefined) {
-        const conflicts: string[] = [existing.fileName, file.fileName].sort();
-        throw new Error(
-          `${file.fileName}: duplicate protobuf symbol ${symbol.fullName} in ${conflicts.join(', ')}`
-        );
-      }
+/**
+ * 收集单个文件的符号，并关闭文件内的重名与扁平化名冲突。
+ *
+ * 扁平化名表的作用域是单个文件，因此按文件新建实例；
+ * 跨文件的符号表以可变 Map 形式由 DescriptorModelBuilder 传入并共享。
+ */
+class FileSymbolCollector {
+  private readonly packagePrefix: string;
+  private readonly localNames: Map<string, string> = new Map();
 
-      const localPath: string | undefined = localNames.get(symbol.arkName);
-      if (localPath !== undefined) {
-        const conflicts: string[] = [localPath, symbol.fullName].sort();
-        throw new Error(
-          `${file.fileName}: flattened ArkTS type name ${symbol.arkName} conflicts between ${conflicts[0]} and ${conflicts[1]}`
-        );
-      }
+  public constructor(
+    private readonly file: FileModel,
+    private readonly symbols: Map<string, TypeSymbol>
+  ) {
+    this.packagePrefix = file.file.package ? `.${file.file.package}` : '';
+  }
 
-      localNames.set(symbol.arkName, symbol.fullName);
-      this.symbols.set(symbol.fullName, symbol);
-      file.symbols.push(symbol);
-    };
+  public collect(): void {
+    this.processEnums(this.file.file.enumType ?? [], [], []);
+    this.processMessages(this.file.file.messageType ?? [], [], []);
+  }
 
-    const walkEnums = (
-      enums: IEnumDescriptorProto[],
-      protoPath: string[],
-      arkPath: string[]
-    ): void => {
-      for (const enumDescriptor of enums) {
-        const protoName: string = requireProtoIdentifier(
-          enumDescriptor.name,
-          `${file.fileName}: enum name`
-        );
+  /**
+   * 登记符号，并拒绝跨文件的 protobuf 全名重复与同文件内的 ArkTS 名冲突。
+   */
+  private registerSymbol(symbol: TypeSymbol): void {
+    const fileName: string = this.file.fileName;
+    const existing: TypeSymbol | undefined = this.symbols.get(symbol.fullName);
+    if (existing !== undefined) {
+      const conflicts: string[] = [existing.fileName, fileName].sort();
+      throw new Error(
+        `${fileName}: duplicate protobuf symbol ${symbol.fullName} in ${conflicts.join(', ')}`
+      );
+    }
 
-        const arkName: string = arkPath.concat(toUpperCamel(protoName)).join('');
-        const fullName: string = `${packagePrefix}.${protoPath.concat(protoName).join('.')}`;
-        const enumValues: number[] = (enumDescriptor.value ?? []).map((value): number => {
-          requireProtoIdentifier(value.name, `${file.fileName}: enum ${fullName} value`);
-          if (value.number === undefined) {
-            throw new Error(`${file.fileName}: enum ${fullName} contains a value without a number`);
-          }
-          return value.number;
-        });
+    const localPath: string | undefined = this.localNames.get(symbol.arkName);
+    if (localPath !== undefined) {
+      const conflicts: string[] = [localPath, symbol.fullName].sort();
+      throw new Error(
+        `${fileName}: flattened ArkTS type name ${symbol.arkName} conflicts between ${conflicts[0]} and ${conflicts[1]}`
+      );
+    }
 
-        if (enumValues.length === 0 || enumValues[0] !== 0) {
-          throw new Error(`${file.fileName}: proto3 enum ${fullName} must declare zero as its first value`);
-        }
+    this.localNames.set(symbol.arkName, symbol.fullName);
+    this.symbols.set(symbol.fullName, symbol);
+    this.file.symbols.push(symbol);
+  }
 
-        add({
-          fullName,
-          arkName,
-          fileName: file.fileName,
-          kind: 'enum',
-          enum: enumDescriptor,
-          enumValues
-        });
-      }
-    };
+  private processEnums(
+    enums: IEnumDescriptorProto[],
+    protoPath: string[],
+    arkPath: string[]
+  ): void {
+    const fileName: string = this.file.fileName;
+    for (const enumDescriptor of enums) {
+      const protoName: string = requireProtoIdentifier(
+        enumDescriptor.name,
+        `${fileName}: enum name`
+      );
 
-    // ArkTS 没有 protobuf nested 声明，按“外层到内层”拼接成确定的顶层类型名。
-    const walkMessages = (
-      messages: IDescriptorProto[],
-      protoPath: string[],
-      arkPath: string[]
-    ): void => {
-      for (const message of messages) {
-        const protoName: string = requireProtoIdentifier(
-          message.name,
-          `${file.fileName}: message name`
-        );
+      const naming: SymbolNaming = nestedSymbolNaming(
+        this.packagePrefix,
+        protoPath,
+        arkPath,
+        protoName
+      );
 
-        const nextProtoPath: string[] = protoPath.concat(protoName);
-        const nextArkPath: string[] = arkPath.concat(toUpperCamel(protoName));
-        const fullName: string = `${packagePrefix}.${nextProtoPath.join('.')}`;
-        add({
-          fullName,
-          arkName: nextArkPath.join(''),
-          fileName: file.fileName,
-          kind: message.options?.mapEntry === true ? 'map' : 'message',
-          message
-        });
+      this.registerSymbol({
+        fullName: naming.fullName,
+        arkName: naming.arkName,
+        fileName,
+        kind: 'enum',
+        enum: enumDescriptor,
+        enumValues: requireEnumValues(enumDescriptor, naming.fullName, fileName)
+      });
+    }
+  }
 
-        walkEnums(message.enumType ?? [], nextProtoPath, nextArkPath);
-        walkMessages(message.nestedType ?? [], nextProtoPath, nextArkPath);
-      }
-    };
+  // ArkTS 没有 protobuf nested 声明，按“外层到内层”拼接成确定的顶层类型名。
+  private processMessages(
+    messages: IDescriptorProto[],
+    protoPath: string[],
+    arkPath: string[]
+  ): void {
+    for (const message of messages) {
+      const protoName: string = requireProtoIdentifier(
+        message.name,
+        `${this.file.fileName}: message name`
+      );
 
-    walkEnums(file.file.enumType ?? [], [], []);
-    walkMessages(file.file.messageType ?? [], [], []);
+      const naming: SymbolNaming = nestedSymbolNaming(
+        this.packagePrefix,
+        protoPath,
+        arkPath,
+        protoName
+      );
+
+      this.registerSymbol({
+        fullName: naming.fullName,
+        arkName: naming.arkName,
+        fileName: this.file.fileName,
+        kind: message.options?.mapEntry === true ? 'map' : 'message',
+        message
+      });
+
+      this.processEnums(message.enumType ?? [], naming.protoPath, naming.arkPath);
+      this.processMessages(message.nestedType ?? [], naming.protoPath, naming.arkPath);
+    }
   }
 }
 
 interface DescriptorIndexes {
   readonly files: ReadonlyMap<string, FileModel>;
   readonly symbols: ReadonlyMap<string, TypeSymbol>;
+}
+
+/**
+ * 嵌套声明在 protobuf 与 ArkTS 两侧的名字，以及供更深层嵌套继续拼接的路径。
+ */
+interface SymbolNaming {
+  readonly fullName: string;
+  readonly arkName: string;
+  readonly protoPath: string[];
+  readonly arkPath: string[];
+}
+
+/**
+ * 由外层路径与当前声明名拼出 protobuf 全名和扁平化后的 ArkTS 名。
+ */
+function nestedSymbolNaming(
+  packagePrefix: string,
+  protoPath: string[],
+  arkPath: string[],
+  protoName: string
+): SymbolNaming {
+  const nextProtoPath: string[] = protoPath.concat(protoName);
+  const nextArkPath: string[] = arkPath.concat(toUpperCamel(protoName));
+  return {
+    fullName: `${packagePrefix}.${nextProtoPath.join('.')}`,
+    arkName: nextArkPath.join(''),
+    protoPath: nextProtoPath,
+    arkPath: nextArkPath
+  };
+}
+
+/**
+ * 校验 proto3 enum 的取值：每个取值需有合法名称与编号，且首个取值必须为零。
+ */
+function requireEnumValues(
+  enumDescriptor: IEnumDescriptorProto,
+  fullName: string,
+  fileName: string
+): number[] {
+  const enumValues: number[] = (enumDescriptor.value ?? []).map((value): number => {
+    requireProtoIdentifier(value.name, `${fileName}: enum ${fullName} value`);
+    if (value.number === undefined) {
+      throw new Error(`${fileName}: enum ${fullName} contains a value without a number`);
+    }
+    return value.number;
+  });
+
+  if (enumValues.length === 0 || enumValues[0] !== 0) {
+    throw new Error(`${fileName}: proto3 enum ${fullName} must declare zero as its first value`);
+  }
+  return enumValues;
 }
 
 function requireFileName(value: string | null | undefined): string {
@@ -260,6 +332,10 @@ function findDuplicates(values: string[]): string[] {
     seen.add(value);
   }
   return [...duplicates].sort();
+}
+
+function withPrefix(prefix: string, relative: string): string {
+  return prefix.length === 0 ? relative : `${prefix}/${relative}`;
 }
 
 function compareText(left: string, right: string): number {

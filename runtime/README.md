@@ -21,7 +21,7 @@ ohpm install protoc-gen-arkts-runtime
 ```json5
 {
   dependencies: {
-    "protoc-gen-arkts-runtime": "^1.0.2",
+    "protoc-gen-arkts-runtime": "^1.0.3",
   },
 }
 ```
@@ -42,32 +42,28 @@ ohpm install protoc-gen-arkts-runtime
 import { ProtoReader, ProtoWireType, ProtoWriter } from "protoc-gen-arkts-runtime";
 ```
 
-生成代码时，将同一包名传给生成器：
+生成器默认就按这个包名导入 runtime，因此依赖键保持默认时无需额外传参：
 
 ```shell
-npm install --save-dev protoc-gen-arkts
+npm install -g protoc-gen-arkts
+protoc --arkts_out=entry/src/main/ets/generated your.proto
 ```
 
-```shell
-protoc \
-  --plugin=protoc-gen-arkts=./node_modules/.bin/protoc-gen-arkts \
-  --arkts_out=runtime_import=protoc-gen-arkts-runtime:entry/src/main/ets/generated \
-  your.proto
-```
+若改用了其他依赖键，用 `runtime_import` 把同一名字传给生成器。
 
 ## 公共 API
 
 `Index.ets` 只导出以下稳定接口：
 
-| API                | 用途                                   |
-| ------------------ | -------------------------------------- |
-| `ProtoWireType`    | Protobuf wire type 常量                |
-| `ProtoWriter`      | 编码标量、tag 和 length-delimited 数据 |
-| `ProtoReader`      | 解码标量、tag 和跳过未知字段           |
-| `appendProtoValue` | 向 Sendable Array 添加值               |
-| `setProtoMapValue` | 写入 Sendable Map                      |
-| `getProtoMapKeys`  | 获取 Sendable Map 的确定性 key 快照    |
-| `getProtoMapValue` | 读取 Sendable Map                      |
+| API                | 用途                                                                                                            |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `ProtoWireType`    | Protobuf wire type 常量                                                                                         |
+| `ProtoWriter`      | 编码标量、tag 和 length-delimited 数据；`finish()` 返回 Sendable bytes，`finishBuffer()` 返回原生 `ArrayBuffer` |
+| `ProtoReader`      | 解码标量、tag 和跳过未知字段；构造函数接受原生或 Sendable bytes，`fromBuffer()` 直接读原生 `ArrayBuffer`        |
+| `appendProtoValue` | 向 Sendable Array 添加值                                                                                        |
+| `setProtoMapValue` | 写入 Sendable Map                                                                                               |
+| `getProtoMapKeys`  | 获取 Sendable Map 的确定性 key 快照                                                                             |
+| `getProtoMapValue` | 读取 Sendable Map                                                                                               |
 
 完整生成器用法、能力边界和兼容关系见 [项目主页](https://github.com/evilwk/protoc-gen-arkts)。
 

@@ -9,11 +9,11 @@ export const vectorDir = join(import.meta.dirname, 'fixture');
 export const groupFixtureDir = join(import.meta.dirname, 'fixture', 'groups');
 
 const LEGACY_PASS = [
-  `--arkts_out=runtime_import=proto_runtime,group_prefix=legacy,other_group_prefix=v2,other_group_files=gateway/envelope.proto:`,
+  `--arkts_out=runtime_import=proto_runtime,output_prefix=legacy,dep_root=v2,dep_prefix=v2:`,
   ['common/shared.proto', 'common/backref.proto']
 ];
 const V2_PASS = [
-  `--arkts_out=runtime_import=proto_runtime,group_prefix=v2,other_group_prefix=legacy,other_group_files=common/shared.proto;common/backref.proto:`,
+  `--arkts_out=runtime_import=proto_runtime,output_prefix=v2,dep_root=legacy,dep_prefix=legacy:`,
   ['gateway/envelope.proto']
 ];
 

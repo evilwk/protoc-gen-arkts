@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package demo;
+
+enum Status {
+  STATUS_UNKNOWN = 0;
+  STATUS_OK = 1;
+  STATUS_ERROR = 2;
+}
+
+message Profile {
+  string nickname = 1;
+  int32 age = 2;
+}
+
+// 字段覆盖 singular、enum、packed repeated、非 packed repeated、map、
+// 嵌套 message、bytes 和 oneof，用于验证生成代码的各条编解码路径。
+message Envelope {
+  int32 code = 1;
+  string message = 2;
+  Status status = 3;
+  repeated int32 scores = 4;
+  repeated string tags = 5;
+  map<string, int32> counters = 6;
+  Profile profile = 7;
+  bytes payload = 8;
+  oneof result {
+    Profile ok = 9;
+    string failure = 10;
+  }
+}

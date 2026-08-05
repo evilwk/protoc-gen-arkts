@@ -25,8 +25,8 @@ export function stripProtoExtension(value: string): string {
 
 export function relativeModule(fromOutput: string, toOutputOrModule: string): string {
   const fromDirectory: string = posix.dirname(fromOutput);
-  const target: string = stripModuleExtension(toOutputOrModule);
-  let relative: string = posix.relative(fromDirectory, target);
+  const targetModule: string = stripModuleExtension(toOutputOrModule);
+  let relative: string = posix.relative(fromDirectory, targetModule);
   if (!relative.startsWith('.')) {
     relative = `./${relative}`;
   }

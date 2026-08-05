@@ -2,6 +2,20 @@
 
 本项目按版本记录面向使用者的变化。
 
+
+## 0.5.0 - 2026-08-04
+
+- 生成的 `decode`/`mergeFrom` 签名放宽为 `Uint8Array | collections.Uint8Array`，
+  可直接接收网络栈（如 RCP）返回的原生 `ArrayBuffer` 视图，无需先转成 Sendable 容器。
+- 嵌套 message、map entry、oneof message 和 packed 字段的递归解码改用 `ProtoReader.readSlice()`，
+  通过共享底层内存的视图替换原先每层一次的 `collections.Uint8Array` 分配与逐字节拷贝。
+- 新增生成方法 `encodeBuffer(): ArrayBuffer`，可直接作为 RCP 等网络接口的请求体，
+  不必先经过 `encode()` 得到 Sendable bytes 再拷回原生。
+- 编码逻辑抽取为私有 `writeTo(writer)`，由 `encode()` 与 `encodeBuffer()` 共用，避免生成代码重复一份 encoder 体。
+- `bytes` 字段类型保持 `collections.Uint8Array`，继续使用 `readBytes()`；`encode()` 签名与返回类型不变。
+  Sendable 容器与原生内存之间不存在视图转换，该字段的读取仍为一次拷贝。
+- **最低 runtime 版本提升到 `1.0.3`**（生成代码调用 `readSlice()`）。升级生成器时必须同时升级 runtime。
+
 ## 0.4.0 - 2026-08-03
 
 - 首次以独立 GitHub 仓库形式开源。

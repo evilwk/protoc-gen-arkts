@@ -1,11 +1,8 @@
 import type { IEnumDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { DescriptorModel } from '../model/descriptor-model.js';
-import { TYPE_ENUM, TYPE_MESSAGE } from '../model/types.js';
-import type {
-  FileModel,
-  PluginOptions,
-  TypeSymbol
-} from '../model/types.js';
+import { isNamedType } from '../model/descriptor-types.js';
+import type { PluginOptions } from '../model/plugin.js';
+import type { FileModel, TypeSymbol } from '../model/symbols.js';
 import {
   relativeModule,
   requireArkIdentifier,
@@ -106,13 +103,13 @@ export class ArkTSFileRenderer {
       }
 
       for (const field of symbol.message.field ?? []) {
-        if ((field.type === TYPE_MESSAGE || field.type === TYPE_ENUM) && field.typeName) {
-          const target: TypeSymbol = this.model.requireSymbol(
+        if (isNamedType(field.type ?? 0) && field.typeName) {
+          const resolvedSymbol: TypeSymbol = this.model.requireSymbol(
             field.typeName,
             `${this.file.fileName}: field ${field.name ?? '<unnamed>'}`
           );
-          if (target.fileName !== this.file.fileName) {
-            referenced.add(target.fullName);
+          if (resolvedSymbol.fileName !== this.file.fileName) {
+            referenced.add(resolvedSymbol.fullName);
           }
         }
       }

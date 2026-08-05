@@ -1,6 +1,6 @@
 {
   "name": "protoc-gen-arkts-runtime",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "protoc-gen-arkts 生成代码使用的纯 ArkTS Protobuf wire runtime",
   "keywords": ["protobuf"],
   "main": "Index.ets",

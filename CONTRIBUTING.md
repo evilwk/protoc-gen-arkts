@@ -22,7 +22,7 @@ npm ci
 npm test
 
 cd ..
-node examples/basic/generate.mjs
+node scripts/generate-entry.mjs
 devecocli build --modules runtime
 devecocli build --modules entry
 git diff --check

@@ -65,14 +65,27 @@ test('generates identical output regardless of group order', () => {
   }
 });
 
-test('rejects dependencies outside every protocol source group', () => {
+test('rejects an imported dependency that is neither generated nor declared', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-wkt-'));
   const result = spawnSync('protoc', [
     '-I', '.',
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=proto_runtime,group_prefix=v2,other_group_prefix=legacy:${outputDir}`,
+    `--arkts_out=runtime_import=proto_runtime,output_prefix=v2:${outputDir}`,
     'wkt_probe.proto'
   ], { cwd: vectorDir, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /does not belong to any protocol source group/);
+  assert.match(result.stderr, /is imported but not generated/);
+});
+
+// 未声明 dep_root 时，被 import 但未生成的依赖同样要报错，而不是产出悬空 import。
+test('rejects an unresolved dependency even without any prefix option', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-wkt-plain-'));
+  const result = spawnSync('protoc', [
+    '-I', '.',
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=runtime_import=proto_runtime:${outputDir}`,
+    'wkt_probe.proto'
+  ], { cwd: vectorDir, encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /is imported but not generated/);
 });

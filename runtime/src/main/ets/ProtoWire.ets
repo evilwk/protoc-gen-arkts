@@ -71,8 +71,18 @@ export function getProtoMapValue<K, V>(values: collections.Map<K, V>, key: K): V
 }
 
 /**
- * 纯 ArkTS Protobuf writer。
- * writer 只应作为 encode 过程中的局部对象使用；完成后通过 finish() 返回 Sendable bytes。
+ * 把 Sendable bytes 拷贝为原生 Uint8Array；两者底层不同，无视图转换，必然拷贝一次。
+ */
+function toNativeBytes(bytes: collections.Uint8Array): Uint8Array {
+  const result: Uint8Array = new Uint8Array(bytes.length);
+  for (let index: number = 0; index < bytes.length; index++) {
+    result[index] = bytes[index];
+  }
+  return result;
+}
+
+/**
+ * 纯 ArkTS Protobuf writer；只应作为 encode 过程中的局部对象使用。
  */
 export class ProtoWriter {
   private buffer: Uint8Array = new Uint8Array(64);
@@ -173,8 +183,18 @@ export class ProtoWriter {
     }
   }
 
+  /**
+   * 返回 Sendable bytes，供写入 bytes 字段或跨线程传递。
+   */
   finish(): collections.Uint8Array {
     return collections.Uint8Array.from(this.buffer.subarray(0, this.position));
+  }
+
+  /**
+   * 返回原生 ArrayBuffer，可直接作为 RCP 等网络接口的请求体；按实际写入长度截取一次。
+   */
+  finishBuffer(): ArrayBuffer {
+    return this.buffer.buffer.slice(0, this.position);
   }
 
   private writeVarint(value: bigint): void {
@@ -252,11 +272,21 @@ export class ProtoWriter {
  * 严格校验边界、截断输入和 group 配对的纯 ArkTS Protobuf reader。
  */
 export class ProtoReader {
-  private readonly bytes: collections.Uint8Array;
+  private readonly bytes: Uint8Array;
   private position: number = 0;
 
-  constructor(bytes: collections.Uint8Array) {
-    this.bytes = bytes;
+  /**
+   * 接受原生视图或 Sendable bytes；原生输入零拷贝直接使用，Sendable 输入拷贝一次转为原生。
+   */
+  constructor(bytes: Uint8Array | collections.Uint8Array) {
+    this.bytes = bytes instanceof Uint8Array ? bytes : toNativeBytes(bytes);
+  }
+
+  /**
+   * 从原生 ArrayBuffer 构造 reader，不复制数据；网络栈（如 RCP）的响应体可直接传入。
+   */
+  static fromBuffer(buffer: ArrayBuffer): ProtoReader {
+    return new ProtoReader(new Uint8Array(buffer));
   }
 
   isAtEnd(): boolean {
@@ -349,13 +379,24 @@ export class ProtoReader {
     return new util.TextDecoder('utf-8', { fatal: true }).decodeToString(value);
   }
 
+  /**
+   * 读取 length-delimited 字节段并返回 Sendable 副本，供 bytes 字段存储；必然拷贝一次。
+   */
   readBytes(): collections.Uint8Array {
     const length: number = this.readLength();
-    const value: collections.Uint8Array = new collections.Uint8Array(length);
-    for (let index: number = 0; index < length; index++) {
-      value[index] = this.readByte();
-    }
-    return value;
+    const start: number = this.position;
+    this.position += length;
+    return new collections.Uint8Array(this.bytes.subarray(start, start + length));
+  }
+
+  /**
+   * 读取 length-delimited 字节段并返回共享底层内存的原生视图，供递归解码使用，不得长期持有。
+   */
+  readSlice(): Uint8Array {
+    const length: number = this.readLength();
+    const start: number = this.position;
+    this.position += length;
+    return this.bytes.subarray(start, start + length);
   }
 
   skipField(fieldNumber: number, wireType: number): void {

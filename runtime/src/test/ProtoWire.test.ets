@@ -127,6 +127,104 @@ export default function protoWireTest(): void {
       assertBytes(bytes, [0x00, 0x80, 0xff]);
     });
 
+    it('acceptsNativeAndSendableDecodeInput', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(1, ProtoWireType.VARINT);
+      writer.writeUInt32(300);
+      const sendable: collections.Uint8Array = writer.finish();
+
+      // Sendable 入口：构造函数内部拷贝一次。
+      const sendableReader: ProtoReader = new ProtoReader(sendable);
+      expect(sendableReader.readTag()).assertEqual(0x08);
+      expect(sendableReader.readUInt32()).assertEqual(300);
+
+      // 原生入口：零拷贝视图，读取结果必须一致。
+      const nativeReader: ProtoReader = new ProtoReader(new Uint8Array(writer.finishBuffer()));
+      expect(nativeReader.readTag()).assertEqual(0x08);
+      expect(nativeReader.readUInt32()).assertEqual(300);
+      expect(nativeReader.isAtEnd()).assertTrue();
+    });
+
+    it('finishBufferReturnsNativeBufferTrimmedToLength', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(1, ProtoWireType.VARINT);
+      writer.writeUInt32(300);
+
+      // 底层缓冲区按 2 倍扩容，finishBuffer 必须截取到实际写入长度。
+      const buffer: ArrayBuffer = writer.finishBuffer();
+      expect(buffer.byteLength).assertEqual(3);
+
+      // 该 ArrayBuffer 可直接回灌 reader，无需经过 Sendable 容器。
+      const reader: ProtoReader = ProtoReader.fromBuffer(buffer);
+      expect(reader.readTag()).assertEqual(0x08);
+      expect(reader.readUInt32()).assertEqual(300);
+      expect(reader.isAtEnd()).assertTrue();
+    });
+
+    it('finishAndFinishBufferAgreeOnBytes', 0, () => {
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
+      writer.writeString('鸿蒙 protobuf');
+      const sendable: collections.Uint8Array = writer.finish();
+
+      const other: ProtoWriter = new ProtoWriter();
+      other.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
+      other.writeString('鸿蒙 protobuf');
+      const native: Uint8Array = new Uint8Array(other.finishBuffer());
+
+      expect(native.length).assertEqual(sendable.length);
+      for (let index: number = 0; index < sendable.length; index++) {
+        expect(native[index]).assertEqual(sendable[index]);
+      }
+    });
+
+    it('readsFromNativeArrayBufferOfAnyLength', 0, () => {
+      // 长度 3 不是 4 的整数倍；原生视图不受 collections.Uint8Array 的对齐约束。
+      const arrayBuffer: ArrayBuffer = new ArrayBuffer(3);
+      const view: Uint8Array = new Uint8Array(arrayBuffer);
+      view[0] = 0x08;
+      view[1] = 0xac;
+      view[2] = 0x02;
+
+      const reader: ProtoReader = ProtoReader.fromBuffer(arrayBuffer);
+      expect(reader.readTag()).assertEqual(0x08);
+      expect(reader.readUInt32()).assertEqual(300);
+      expect(reader.isAtEnd()).assertTrue();
+    });
+
+    it('readsSliceWithoutCopyingAndKeepsPositionAligned', 0, () => {
+      const inner: ProtoWriter = new ProtoWriter();
+      inner.writeTag(1, ProtoWireType.VARINT);
+      inner.writeUInt32(7);
+
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
+      writer.writeBytes(inner.finish());
+      writer.writeTag(2, ProtoWireType.VARINT);
+      writer.writeUInt32(9);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readTag()).assertEqual(0x0a);
+      const slice: Uint8Array = reader.readSlice();
+      expect(slice.length).assertEqual(2);
+
+      const nested: ProtoReader = new ProtoReader(slice);
+      expect(nested.readTag()).assertEqual(0x08);
+      expect(nested.readUInt32()).assertEqual(7);
+      expect(nested.isAtEnd()).assertTrue();
+
+      // readSlice 必须跨过整个字节段，外层继续读取后续字段。
+      expect(reader.readTag()).assertEqual(0x10);
+      expect(reader.readUInt32()).assertEqual(9);
+      expect(reader.isAtEnd()).assertTrue();
+    });
+
+    it('rejectsTruncatedSlice', 0, () => {
+      expect(didThrow((): void => {
+        new ProtoReader(collections.Uint8Array.from([0x05, 0x01, 0x02])).readSlice();
+      })).assertTrue();
+    });
+
     it('supportsPackedAndUnpackedComposition', 0, () => {
       const packedWriter: ProtoWriter = new ProtoWriter();
       packedWriter.writeSInt32(-1);

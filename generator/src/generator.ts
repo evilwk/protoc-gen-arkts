@@ -1,10 +1,6 @@
 import { DescriptorModel } from './model/descriptor-model.js';
-import type {
-  FileModel,
-  GeneratedFile,
-  GeneratorRequest,
-  PluginOptions
-} from './model/types.js';
+import type { GeneratedFile, GeneratorRequest, PluginOptions } from './model/plugin.js';
+import type { FileModel } from './model/symbols.js';
 import { parseOptions } from './options.js';
 import { ArkTSFileRenderer } from './rendering/file-renderer.js';
 
@@ -25,13 +21,15 @@ export class ArkTSGenerator {
       options
     );
 
-    return [...request.filesToGenerate].sort().map((fileName: string): GeneratedFile => {
-      const file: FileModel = model.requireFile(fileName);
-      return {
-        name: model.requireOutputName(file, fileName),
-        content: new ArkTSFileRenderer(file, model, options).render()
-      };
-    });
+    return [...request.filesToGenerate]
+      .sort()
+      .map((fileName: string): GeneratedFile => {
+        const file: FileModel = model.requireFile(fileName);
+        return {
+          name: model.requireOutputName(file, fileName),
+          content: new ArkTSFileRenderer(file, model, options).render()
+        };
+      });
   }
 
 }

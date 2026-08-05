@@ -1,101 +1,106 @@
-import type { PluginOptions } from './model/types.js';
+import type { PluginOptions } from './model/plugin.js';
+import { scanProtoRoot, type ProtoScanner } from './proto-scanner.js';
 
 const KNOWN_OPTIONS = new Set([
   'runtime_import',
-  'group_prefix',
-  'other_group_prefix',
-  'other_group_files'
+  'output_prefix',
+  'dep_root',
+  'dep_prefix'
 ]);
 
 /**
  * 解析 `--arkts_out` 冒号前的插件参数。
  *
- * 协议按来源组分次生成：每次调用声明本组输出前缀、另一组输出前缀和另一组的逻辑 proto
- * 清单，插件据此为本次生成文件和跨组依赖分别计算输出路径。
+ * 本次生成的文件按 `output_prefix` 落盘；`dep_root` 声明依赖协议所在的 `-I` 根，
+ * 插件遍历该目录得到依赖清单，并按 `dep_prefix` 计算依赖的 import 路径。
  */
-export function parseOptions(parameter: string): PluginOptions {
-  let runtimeImport: string = './ProtoWire';
-  let groupPrefix: string = '';
-  let otherGroupPrefix: string = '';
-  const otherGroupFiles: Set<string> = new Set();
-  const seenOptions: Set<string> = new Set();
-  if (parameter.length === 0) {
-    return {
-      runtimeImport,
-      groupPrefix,
-      otherGroupPrefix,
-      otherGroupFiles
-    };
-  }
+export function parseOptions(
+  parameter: string,
+  scan: ProtoScanner = scanProtoRoot
+): PluginOptions {
+  // runtime 以 ohpm 包形式发布，默认按包名导入；vendored 源码需显式传相对路径。
+  let runtimeImport: string = 'protoc-gen-arkts-runtime';
+  let outputPrefix: string = '';
+  let depRoot: string = '';
+  let depPrefix: string | undefined;
 
-  for (const item of parameter.split(',')) {
+  const seenOptions: Set<string> = new Set();
+  for (const item of parameter.length === 0 ? [] : parameter.split(',')) {
     const separator: number = item.indexOf('=');
     const name: string = separator >= 0 ? item.slice(0, separator) : item;
     const value: string = separator >= 0 ? item.slice(separator + 1) : '';
+
     if (!KNOWN_OPTIONS.has(name)) {
       throw new Error(`unknown plugin option "${name}"`);
     }
+
     if (seenOptions.has(name)) {
       throw new Error(`duplicate plugin option "${name}"`);
     }
-    seenOptions.add(name);
+
     if (value.length === 0) {
       throw new Error(`plugin option "${name}" requires a non-empty value`);
     }
+
+    seenOptions.add(name);
+
     switch (name) {
       case 'runtime_import':
         // 以 "." 开头表示相对输出根的路径，否则视为 HarmonyOS 模块名。
         runtimeImport = value;
         break;
-      case 'group_prefix':
-        groupPrefix = requireGroupPrefix(name, value);
+      case 'output_prefix':
+        outputPrefix = requirePrefix(name, value);
         break;
-      case 'other_group_prefix':
-        otherGroupPrefix = requireGroupPrefix(name, value);
+      case 'dep_root':
+        depRoot = value;
         break;
-      case 'other_group_files':
-        // 分号分隔，避免与插件参数本身的逗号分隔冲突。
-        for (const file of value.split(';')) {
-          otherGroupFiles.add(requireProtoPath(name, file));
-        }
+      case 'dep_prefix':
+        depPrefix = requirePrefix(name, value);
         break;
       default:
         throw new Error(`unhandled plugin option "${name}"`);
     }
   }
 
-  if (otherGroupFiles.size > 0 && otherGroupPrefix.length === 0) {
-    throw new Error('other_group_files requires other_group_prefix');
+  if (depPrefix !== undefined && depRoot.length === 0) {
+    throw new Error('dep_prefix requires dep_root');
   }
-  if (groupPrefix.length > 0 && groupPrefix === otherGroupPrefix) {
-    throw new Error('group_prefix and other_group_prefix must be different');
-  }
+
+  // dep_prefix 未声明时依赖与本次生成同目录。
+  const resolvedDepPrefix: string = depPrefix ?? outputPrefix;
+  const depFiles: ReadonlySet<string> = depRoot.length === 0
+    ? new Set()
+    : new Set(scan(depRoot).map((file): string => requireProtoPath('dep_root', file)));
+
   return {
     runtimeImport,
-    groupPrefix,
-    otherGroupPrefix,
-    otherGroupFiles
+    outputPrefix,
+    depPrefix: resolvedDepPrefix,
+    depFiles
   };
 }
 
-function requireGroupPrefix(name: string, value: string): string {
-  const segments: string[] = value.split('/');
-  if (value.startsWith('/') || value.endsWith('/') ||
-    value.includes('..') || value.includes('\\') ||
-    segments.some((segment): boolean => segment.length === 0 || segment === '.')
-  ) {
+function requirePrefix(name: string, value: string): string {
+  if (!isValidRelativePath(value)) {
     throw new Error(`plugin option "${name}" must be a relative directory prefix without ".."`);
   }
   return value;
 }
 
 function requireProtoPath(name: string, value: string): string {
-  const segments: string[] = value.split('/');
-  if (value.length === 0 || value.startsWith('/') ||
-    value.endsWith('/') || value.includes('\\') ||
-    segments.some((segment): boolean => segment.length === 0 || segment === '.' || segment === '..')
-  ) {
+  if (!isValidRelativePath(value)) {
     throw new Error(`plugin option "${name}" contains an invalid proto path "${value}"`);
   }
   return value;
+}
+
+function isValidRelativePath(value: string): boolean {
+  const segments = value.split('/');
+  return (
+    !value.startsWith('/') &&
+    !value.endsWith('/') &&
+    !value.includes('\\') &&
+    !segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  );
 }

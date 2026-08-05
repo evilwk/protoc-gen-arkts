@@ -1,11 +1,7 @@
 import type { IOneofDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { DescriptorModel } from '../model/descriptor-model.js';
-import type {
-  FieldModel,
-  FileModel,
-  MapFieldModel,
-  MessageTypeSymbol
-} from '../model/types.js';
+import type { FieldModel, MapFieldModel } from '../model/field-model.js';
+import type { FileModel, MessageTypeSymbol } from '../model/symbols.js';
 import { indent, requireArkMemberName, toUpperCamel } from '../naming.js';
 import { renderSource } from '../source-template.js';
 import { FieldCodecRenderer } from './field-codec-renderer.js';
@@ -73,17 +69,27 @@ export class ArkTSMessageRenderer {
     }
     methodParts.push(
       indent(renderSource`
+        private writeTo(writer: ProtoWriter): void {
+          ${encoders}
+        }`),
+      indent(renderSource`
         encode(): collections.Uint8Array {
           const writer: ProtoWriter = new ProtoWriter();
-          ${encoders}
+          this.writeTo(writer);
           return writer.finish();
         }`),
       indent(renderSource`
-        static decode(bytes: collections.Uint8Array): ${messageName} {
+        encodeBuffer(): ArrayBuffer {
+          const writer: ProtoWriter = new ProtoWriter();
+          this.writeTo(writer);
+          return writer.finishBuffer();
+        }`),
+      indent(renderSource`
+        static decode(bytes: Uint8Array | collections.Uint8Array): ${messageName} {
           return ${messageName}.mergeFrom(bytes, new ${messageName}());
         }`),
       indent(renderSource`
-        static mergeFrom(bytes: collections.Uint8Array, message: ${messageName}): ${messageName} {
+        static mergeFrom(bytes: Uint8Array | collections.Uint8Array, message: ${messageName}): ${messageName} {
           const reader: ProtoReader = new ProtoReader(bytes);
           while (!reader.isAtEnd()) {
             const tag: number = reader.readTag();
@@ -116,14 +122,15 @@ export class ArkTSMessageRenderer {
           return this.${oneofName}Case;
         }`
     ];
+    // setter 与 clear 都要先把同一 oneof 的所有成员复位，两处共用这段赋值。
+    const resetMembers: string = fields
+      .map((member): string => `this.${member.name} = ${member.defaultValue};`)
+      .join('\n');
+
     for (const field of fields) {
       const methodName: string = toUpperCamel(field.name);
       const fallback: string = field.kind === 'message' ? 'undefined' : field.defaultValue;
       const setterType: string = field.kind === 'message' ? concreteType(field.arkType) : field.arkType;
-
-      const resetMembers: string = fields
-        .map((member): string => `this.${member.name} = ${member.defaultValue};`)
-        .join('\n');
 
       methods.push(
         renderSource`
@@ -142,9 +149,7 @@ export class ArkTSMessageRenderer {
           }`
       );
     }
-    const resetMembers: string = fields
-      .map((field): string => `this.${field.name} = ${field.defaultValue};`)
-      .join('\n');
+
     methods.push(
       renderSource`
         clear${toUpperCamel(oneofName)}(): void {
@@ -152,6 +157,7 @@ export class ArkTSMessageRenderer {
           this.${oneofName}Case = 0;
         }`
     );
+
     return methods.join('\n\n');
   }
 

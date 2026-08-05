@@ -1,6 +1,6 @@
 import { ArkTSGenerator } from './generator.js';
 import { decodeRequest, encodeResponse } from './plugin-protocol.js';
-import type { GeneratorRequest } from './model/types.js';
+import type { GeneratorRequest } from './model/plugin.js';
 
 const generator: ArkTSGenerator = new ArkTSGenerator();
 
