@@ -1,8 +1,4 @@
-import type {
-  IDescriptorProto,
-  IEnumDescriptorProto,
-  IFileDescriptorProto
-} from 'protobufjs/ext/descriptor/index.js';
+import type { IDescriptorProto, IEnumDescriptorProto, IFileDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 
 interface TypeSymbolBase {
   readonly fullName: string;
@@ -29,13 +25,29 @@ export interface EnumTypeSymbol extends TypeSymbolBase {
 export type TypeSymbol = MessageTypeSymbol | MapTypeSymbol | EnumTypeSymbol;
 
 /**
- * 可直接作为字段类型的符号；map entry 只能经 map 字段间接使用，故排除在外。
+ * 可直接作为字段类型的符号，排除 MapTypeSymbol 类型。
  */
 export type FieldTypeSymbol = Exclude<TypeSymbol, MapTypeSymbol>;
+
+/**
+ * rpc 方法信息
+ */
+export interface ServiceMethodModel {
+  readonly protoName: string;
+  readonly outputFullName: string;
+}
+
+export interface ServiceModel {
+  readonly protoName: string;
+  readonly arkName: string;
+  readonly fullName: string;
+  readonly methods: readonly ServiceMethodModel[];
+}
 
 export interface FileModel {
   readonly file: IFileDescriptorProto;
   readonly fileName: string;
   readonly outputName: string | undefined;
   readonly symbols: TypeSymbol[];
+  readonly services: ServiceModel[];
 }

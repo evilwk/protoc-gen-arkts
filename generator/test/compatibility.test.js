@@ -12,7 +12,7 @@ function sha256(content) {
 test('matches the locked generated-source SHA-256 baseline', () => {
   assert.equal(
     sha256(generateFixture()),
-    'adb1cc05234810ddf97e3d49bf325f3552ac671518c931c4276b4278a4537ea8'
+    '9c1df3be2a20fd8fde3a7526da78de305f4231715fcca9bcdb8e235734159012'
   );
 
   const complex = generateComplex();

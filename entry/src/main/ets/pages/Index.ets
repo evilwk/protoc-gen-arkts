@@ -1,7 +1,12 @@
 import { collections, taskpool } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { Envelope, Profile, Status } from '../generated/Demo';
-import { decodeInTask, encodeInTask, mutateInTask } from '../checks/ConcurrentChecks';
+import {
+  decodeByMethodInTask,
+  decodeInTask,
+  encodeInTask,
+  mutateInTask
+} from '../checks/ConcurrentChecks';
 
 /**
  * 单项验证的执行状态，驱动列表行的文案与配色。
@@ -122,7 +127,8 @@ struct Index {
       new CheckItem('consistency', 'encode 一致性', 'encode 与 encodeBuffer 产出相同字节序列'),
       new CheckItem('defaults', '默认值不上线', 'proto3 默认值不写入 wire，空 message 编码长度为 0'),
       new CheckItem('crossthread', '跨线程编解码', 'taskpool 子线程编码/解码，结果回主线程一致'),
-      new CheckItem('reference', '@Sendable 引用传递', '子线程改写字段后主线程可见，嵌套 message 同为共享实例')
+      new CheckItem('reference', '@Sendable 引用传递', '子线程改写字段后主线程可见，嵌套 message 同为共享实例'),
+      new CheckItem('registry', '响应解码表', '跨线程只传方法名，子线程查生成的解码表拿到 decode')
     ];
   }
 
@@ -242,6 +248,8 @@ struct Index {
           return await this.verifyCrossThreadCodec();
         case 'reference':
           return await this.verifySendableReference();
+        case 'registry':
+          return await this.verifyResponseRegistry();
         default:
           return `未知的验证项 ${key}`;
       }
@@ -331,9 +339,47 @@ struct Index {
    * 构造一个填满各类字段的 Envelope，供多项验证复用。
    * collections 容器的写入接口声明为可抛异常，这里统一兜住并转成可读信息。
    */
+  /**
+   * 验证生成的响应解码表可跨线程按方法名分发，两个方法各走一条分支。
+   * 同时验证未登记的方法名会被解码表拒绝，而不是静默解出错误类型。
+   */
+  private async verifyResponseRegistry(): Promise<string> {
+    const envelope: Envelope = this.buildEnvelope();
+    const profile: Profile = new Profile();
+    profile.nickname = 'kyle';
+    profile.age = 30;
+
+    try {
+      const profileReason: string = await taskpool.execute(
+        decodeByMethodInTask, 'GetProfile', profile.encode()
+      ) as string;
+      if (profileReason.length > 0) {
+        return profileReason;
+      }
+
+      const envelopeReason: string = await taskpool.execute(
+        decodeByMethodInTask, 'GetEnvelope', envelope.encode()
+      ) as string;
+      if (envelopeReason.length > 0) {
+        return envelopeReason;
+      }
+
+      const missingReason: string = await taskpool.execute(
+        decodeByMethodInTask, 'NotARegisteredMethod', profile.encode()
+      ) as string;
+      if (missingReason.length === 0) {
+        return '未登记的方法名应被解码表拒绝，实际通过了';
+      }
+    } catch (error) {
+      const err: BusinessError = error as BusinessError;
+      return `taskpool 执行失败 code=${err.code} ${err.message}`;
+    }
+    return '';
+  }
+
   private buildEnvelope(): Envelope {
     const profile: Profile = new Profile();
-    profile.nickname = '南宫临风';
+    profile.nickname = 'kyle';
     profile.age = 30;
 
     const envelope: Envelope = new Envelope();
@@ -412,7 +458,7 @@ struct Index {
     if (profile === undefined) {
       return 'profile 缺失';
     }
-    if (profile.nickname !== '南宫临风' || profile.age !== 30) {
+    if (profile.nickname !== 'kyle' || profile.age !== 30) {
       return `profile 内容错误：nickname=「${profile.nickname}」age=${profile.age}`;
     }
     const payload: collections.Uint8Array = decoded.payload;

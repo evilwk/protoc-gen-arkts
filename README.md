@@ -13,11 +13,12 @@
 - map 字段、oneof presence 与跨文件引用
 - 多协议来源分组和跨组 import
 - 未知字段跳过、message merge 与确定性 map 编码
+- 按 `service` 生成响应解码表，用于跨 `@Concurrent` 边界按方法名分发解码
 - 与原生内存直连：
   - `decode`/`mergeFrom` 接受 `Uint8Array | collections.Uint8Array`，可直接传入 RCP 等网络栈返回的 `ArrayBuffer` 视图；
   - `encodeBuffer()` 直接产出 `ArrayBuffer` 作为请求体，无需在 Sendable 容器与原生内存之间来回拷贝。
 
-暂不支持 `proto3 optional`、proto2、Editions、group、extensions、service/rpc 代码生成以及 `Any` 等 WKT 的专用 API。
+暂不支持 `proto3 optional`、proto2、Editions、group、extensions 以及 `Any` 等 WKT 的专用 API。
 
 ## 环境要求
 
@@ -117,6 +118,41 @@ export class Profile {
 
 - `repeated` 与 `map` 字段使用 `collections.Array`／`collections.Map`，`bytes` 使用 `collections.Uint8Array`；
 - `oneof` 成员为私有字段，通过生成的 `getXxxCase()`、`hasXxx()`、`getXxx()`、`setXxx()` 访问。
+
+## 响应解码表
+
+每个 `service` 会生成一张以 rpc 方法名为键的响应解码表：
+
+```typescript
+type DemoServiceRspDecoder = (bytes: Uint8Array | collections.Uint8Array) => lang.ISendable;
+
+export const DEMO_SERVICE_RSP_DECODERS: Map<string, DemoServiceRspDecoder>;
+```
+
+它只为跨 `@Concurrent` 边界的解码而存在。类与函数都不是 Sendable，传不进子线程，
+
+因此跨线程只能传方法名，由子线程侧查表拿到 `decode`：
+
+```typescript
+// 独立文件，不能直接或间接引入 UI 装饰器
+@Concurrent
+export function decodeInTask(methodName: string, bytes: collections.Uint8Array): lang.ISendable {
+  const decoder = DEMO_SERVICE_RSP_DECODERS.get(methodName);
+  if (decoder === undefined) {
+    throw new Error(`未登记的方法 ${methodName}`);
+  }
+  return decoder(bytes);
+}
+```
+
+调用侧按大小决定是否让出 UI 线程。protobuf 解码是纯 CPU 计算，没有可等待的 I/O，小消息直接在主线程同步解更快。
+
+```typescript
+const profile: Profile =
+  body.length < THRESHOLD
+    ? Profile.decode(body)
+    : ((await taskpool.execute(decodeInTask, "GetProfile", body)) as Profile);
+```
 
 ## 插件参数
 

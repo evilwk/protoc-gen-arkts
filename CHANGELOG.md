@@ -2,9 +2,9 @@
 
 本项目按版本记录面向使用者的变化。
 
-
 ## 0.5.0 - 2026-08-04
 
+- 为每个 `service` 生成响应解码表，键为 rpc 方法名，值为响应类型的 `decode`。
 - 生成的 `decode`/`mergeFrom` 签名放宽为 `Uint8Array | collections.Uint8Array`，
   可直接接收网络栈（如 RCP）返回的原生 `ArrayBuffer` 视图，无需先转成 Sendable 容器。
 - 嵌套 message、map entry、oneof message 和 packed 字段的递归解码改用 `ProtoReader.readSlice()`，

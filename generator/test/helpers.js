@@ -42,6 +42,21 @@ export function generateComplex() {
   return outputDir;
 }
 
+export function generateServices() {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-service-'));
+  const result = spawnSync('protoc', [
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=runtime_import=../ProtoWire:${outputDir}`,
+    '-I.',
+    'service_fixture.proto',
+    'shared.proto'
+  ], { cwd: vectorDir, encoding: 'utf8' });
+  if (result.status !== 0) {
+    throw new Error(result.stderr);
+  }
+  return readFileSync(join(outputDir, 'ServiceFixture.ets'), 'utf8');
+}
+
 export function generateGroups(order = 'legacy-first') {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-groups-'));
   const passes = order === 'legacy-first' ? [LEGACY_PASS, V2_PASS] : [V2_PASS, LEGACY_PASS];

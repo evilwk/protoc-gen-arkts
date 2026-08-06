@@ -2,6 +2,12 @@ syntax = "proto3";
 
 package demo;
 
+// 用于验证生成的响应解码表可编译并可跨线程分发。
+service DemoService {
+  rpc GetProfile(Profile) returns (Profile);
+  rpc GetEnvelope(Profile) returns (Envelope);
+}
+
 enum Status {
   STATUS_UNKNOWN = 0;
   STATUS_OK = 1;

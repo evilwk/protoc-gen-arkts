@@ -2,7 +2,7 @@
 
 // Plugin version: 0.5.0
 
-import { collections } from '@kit.ArkTS';
+import { collections, lang } from '@kit.ArkTS';
 import { ProtoReader, ProtoWireType, ProtoWriter, appendProtoValue, getProtoMapKeys, getProtoMapValue, setProtoMapValue } from 'protoc-gen-arkts-runtime';
 
 export enum Status {
@@ -276,3 +276,10 @@ export class Envelope {
     setProtoMapValue(message.counters, key, value);
   }
 }
+
+type DemoServiceRspDecoder = (bytes: Uint8Array | collections.Uint8Array) => lang.ISendable;
+
+export const DEMO_SERVICE_RSP_DECODERS: Map<string, DemoServiceRspDecoder> = new Map<string, DemoServiceRspDecoder>([
+  ['GetProfile', Profile.decode as DemoServiceRspDecoder],
+  ['GetEnvelope', Envelope.decode as DemoServiceRspDecoder]
+]);

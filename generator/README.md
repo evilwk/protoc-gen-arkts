@@ -8,9 +8,12 @@
 - singular、repeated、packed/unpacked 字段
 - map 字段、oneof presence 与跨文件、跨组 import
 - 未知字段跳过、message merge 与确定性 map 编码
+- 按 `service` 生成响应解码表，用于跨 `@Concurrent` 边界按方法名分发解码
 - 与原生内存直连：`decode`/`mergeFrom` 接受 `Uint8Array | collections.Uint8Array`，`encodeBuffer()` 直接产出 `ArrayBuffer`
 
-暂不支持 `proto3 optional`、proto2、Editions、group、extensions、service/rpc 代码生成以及 `Any` 等 WKT 的专用 API。
+`service` 只生成响应解码表，不生成请求编码、URL 映射或传输封装。
+
+暂不支持 `proto3 optional`、proto2、Editions、group、extensions 以及 `Any` 等 WKT 的专用 API。
 
 ## 安装
 

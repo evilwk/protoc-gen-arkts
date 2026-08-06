@@ -1,5 +1,5 @@
-import { collections } from '@kit.ArkTS';
-import { Envelope, Status } from '../generated/Demo';
+import { collections, lang } from '@kit.ArkTS';
+import { DEMO_SERVICE_RSP_DECODERS, Envelope, Profile, Status } from '../generated/Demo';
 
 /**
  * 子线程侧的验证逻辑。
@@ -38,10 +38,34 @@ export function decodeInTask(bytes: collections.Uint8Array): string {
     return `子线程解码 payload 长度期望 3，实际 ${decoded.payload.length}`;
   }
   const profileNickname: string = decoded.profile !== undefined ? decoded.profile.nickname : '';
-  if (profileNickname !== '南宫临风') {
+  if (profileNickname !== 'kyle') {
     return `子线程解码嵌套 profile 错误：「${profileNickname}」`;
   }
   return '';
+}
+
+/**
+ * 经生成的响应解码表在子线程里按方法名解码。
+ *
+ * 类与函数都不是 Sendable，传不进子线程，因此跨线程只传方法名，
+ * 由子线程侧查表拿到 decode。这是解码表存在的唯一理由。
+ */
+@Concurrent
+export function decodeByMethodInTask(methodName: string, bytes: collections.Uint8Array): string {
+  const decoder: ((bytes: Uint8Array | collections.Uint8Array) => lang.ISendable) | undefined =
+    DEMO_SERVICE_RSP_DECODERS.get(methodName);
+  if (decoder === undefined) {
+    return `解码表里没有方法 ${methodName}`;
+  }
+
+  const decoded: lang.ISendable = decoder(bytes);
+  if (methodName === 'GetProfile') {
+    const profile: Profile = decoded as Profile;
+    return profile.nickname === 'kyle' ? '' : `按表解码 Profile 错误：「${profile.nickname}」`;
+  }
+
+  const envelope: Envelope = decoded as Envelope;
+  return envelope.code === -42 ? '' : `按表解码 Envelope 错误：code=${envelope.code}`;
 }
 
 /**

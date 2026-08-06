@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package fixture.service;
+
+import "shared.proto";
+
+message GetItemRequest {
+  string id = 1;
+}
+
+message GetItemResponse {
+  string value = 1;
+}
+
+message EmptyResponse {
+}
+
+service ItemService {
+  // 同文件内的响应类型。
+  rpc GetItem(GetItemRequest) returns (GetItemResponse);
+
+  // 同一响应类型被多个方法复用。
+  rpc RefreshItem(GetItemRequest) returns (GetItemResponse);
+
+  // 响应类型定义在 shared.proto，需要跨文件 import。
+  rpc GetShared(GetItemRequest) returns (fixture.complex.SharedItem);
+
+  // 无字段响应同样登记：decode 是构造响应实例的唯一入口。
+  rpc Touch(GetItemRequest) returns (EmptyResponse);
+
+  // streaming 方法不进入解码表。
+  rpc WatchItems(GetItemRequest) returns (stream GetItemResponse);
+  rpc UploadItems(stream GetItemRequest) returns (GetItemResponse);
+}
+
+// 只有 streaming 方法，全部不可解码，不应产出空解码表。
+service StreamOnlyService {
+  rpc WatchItems(GetItemRequest) returns (stream GetItemResponse);
+}
