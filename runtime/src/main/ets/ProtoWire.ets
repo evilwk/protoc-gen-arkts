@@ -2,10 +2,12 @@ import { collections, util } from '@kit.ArkTS';
 
 const MAX_FIELD_NUMBER: number = 0x1fffffff;
 const MAX_LENGTH: bigint = 0x7fffffffn;
+const MAX_LENGTH_NUMBER: number = 0x7fffffff;
 const MAX_VARINT_BYTES: number = 10;
 const INT32_MIN: number = -0x80000000;
 const INT32_MAX: number = 0x7fffffff;
 const UINT32_MAX: number = 0xffffffff;
+const UINT32_MAX_AS_BIGINT: bigint = 0xffffffffn;
 const INT64_MIN: bigint = -0x8000000000000000n;
 const INT64_MAX: bigint = 0x7fffffffffffffffn;
 const UINT64_MAX: bigint = 0xffffffffffffffffn;
@@ -93,23 +95,29 @@ export class ProtoWriter {
     if (!this.isValidWireType(wireType)) {
       throw new Error(`Invalid protobuf wire type: ${wireType}`);
     }
-    this.writeVarint(BigInt(fieldNumber) * 8n + BigInt(wireType));
+    // fieldNumber * 8 + wireType 最大 0xfffffffd，仍在 varint32 快路径范围内。
+    this.writeVarint32(fieldNumber * 8 + wireType);
   }
 
   writeInt32(value: number): void {
     this.validateIntegerRange('int32', value, INT32_MIN, INT32_MAX);
-    this.writeVarint(BigInt.asUintN(64, BigInt(value)));
+    // 负 int32 必须按 protobuf 规则符号扩展成 64 位（整 10 字节），超出 number 精度。
+    if (value < 0) {
+      this.writeVarint(BigInt.asUintN(64, BigInt(value)));
+      return;
+    }
+    this.writeVarint32(value);
   }
 
   writeUInt32(value: number): void {
     this.validateIntegerRange('uint32', value, 0, UINT32_MAX);
-    this.writeVarint(BigInt(value));
+    this.writeVarint32(value);
   }
 
   writeSInt32(value: number): void {
     this.validateIntegerRange('sint32', value, INT32_MIN, INT32_MAX);
-    const signed: bigint = BigInt(value);
-    this.writeVarint((signed << 1n) ^ (signed >> 31n));
+    // zigzag 后落在 [0, 2^32)；`>>> 0` 把 32 位有符号结果转回无符号。
+    this.writeVarint32(((value << 1) ^ (value >> 31)) >>> 0);
   }
 
   writeInt64(value: bigint): void {
@@ -134,7 +142,8 @@ export class ProtoWriter {
 
   writeSFixed32(value: number): void {
     this.validateIntegerRange('sfixed32', value, INT32_MIN, INT32_MAX);
-    this.writeLittleEndian32(Number(BigInt.asUintN(32, BigInt(value))));
+    // `>>> 0` 取 32 位二进制补码，等价于 BigInt.asUintN(32, …) 但不分配。
+    this.writeLittleEndian32(value >>> 0);
   }
 
   writeFixed64(value: bigint): void {
@@ -162,12 +171,12 @@ export class ProtoWriter {
   }
 
   writeBool(value: boolean): void {
-    this.writeVarint(value ? 1n : 0n);
+    this.writeVarint32(value ? 1 : 0);
   }
 
   writeString(value: string): void {
     if (value.length === 0) {
-      this.writeVarint(0n);
+      this.writeVarint32(0);
       return;
     }
     const bytes: Uint8Array = new util.TextEncoder().encodeInto(value);
@@ -206,16 +215,30 @@ export class ProtoWriter {
     this.writeByte(Number(remaining));
   }
 
+  /**
+   * 32 位以内取值的 varint 快路径，字节输出与 writeVarint 完全一致但不分配 BigInt。
+   *
+   * 调用方必须保证 value 是 [0, 2^32) 内的整数：该范围内 `& 0x7f` 与 `>>>` 都是精确的
+   * 32 位运算，超出后 `>>>` 会先把操作数截断到 32 位，结果不再正确。
+   */
+  private writeVarint32(value: number): void {
+    let remaining: number = value;
+    while (remaining >= 0x80) {
+      this.writeByte((remaining & 0x7f) | 0x80);
+      remaining >>>= 7;
+    }
+    this.writeByte(remaining);
+  }
+
   private writeLength(value: number): void {
-    this.validateIntegerRange('length', value, 0, Number(MAX_LENGTH));
-    this.writeVarint(BigInt(value));
+    this.validateIntegerRange('length', value, 0, MAX_LENGTH_NUMBER);
+    this.writeVarint32(value);
   }
 
   private writeLittleEndian32(value: number): void {
-    const unsigned: bigint = BigInt(value);
     this.ensureCapacity(4);
     for (let index: number = 0; index < 4; index++) {
-      this.buffer[this.position++] = Number((unsigned >> BigInt(index * 8)) & 0xffn);
+      this.buffer[this.position++] = (value >>> (index * 8)) & 0xff;
     }
   }
 
@@ -315,7 +338,7 @@ export class ProtoReader {
 
   readUInt32(): number {
     const value: bigint = this.readVarint();
-    if (value > BigInt(UINT32_MAX)) {
+    if (value > UINT32_MAX_AS_BIGINT) {
       throw new Error('Protobuf uint32 is out of range');
     }
     return Number(value);
@@ -323,7 +346,7 @@ export class ProtoReader {
 
   readSInt32(): number {
     const value: bigint = this.readVarint();
-    if (value > BigInt(UINT32_MAX)) {
+    if (value > UINT32_MAX_AS_BIGINT) {
       throw new Error('Protobuf sint32 is out of range');
     }
     return Number((value >> 1n) ^ (-(value & 1n)));

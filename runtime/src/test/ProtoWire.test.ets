@@ -267,6 +267,50 @@ export default function protoWireTest(): void {
       expect(reader.readInt32()).assertEqual(42);
     });
 
+    it('encodesVarintAcrossEveryByteLengthBoundary', 0, () => {
+      // 覆盖 1..5 字节的每个进位边界，确保 32 位快路径的移位与掩码逐字节正确。
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeUInt32(127);
+      writer.writeUInt32(128);
+      writer.writeUInt32(16383);
+      writer.writeUInt32(16384);
+      writer.writeUInt32(2097151);
+      writer.writeUInt32(2097152);
+      writer.writeUInt32(268435455);
+      writer.writeUInt32(268435456);
+
+      assertBytes(writer.finish(), [
+        0x7f,
+        0x80, 0x01,
+        0xff, 0x7f,
+        0x80, 0x80, 0x01,
+        0xff, 0xff, 0x7f,
+        0x80, 0x80, 0x80, 0x01,
+        0xff, 0xff, 0xff, 0x7f,
+        0x80, 0x80, 0x80, 0x80, 0x01
+      ]);
+    });
+
+    it('encodesHighBitSetVarintsWithoutSignContamination', 0, () => {
+      // 这三个值编码后都设了第 31 位；若快路径误用有符号右移会产出错误字节。
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeTag(0x1fffffff, ProtoWireType.FIXED32);
+      writer.writeUInt32(0xffffffff);
+      writer.writeSInt32(-0x80000000);
+
+      assertBytes(writer.finish(), [
+        0xfd, 0xff, 0xff, 0xff, 0x0f,
+        0xff, 0xff, 0xff, 0xff, 0x0f,
+        0xff, 0xff, 0xff, 0xff, 0x0f
+      ]);
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readTag()).assertEqual(0xfffffffd);
+      expect(reader.readUInt32()).assertEqual(0xffffffff);
+      expect(reader.readSInt32()).assertEqual(-0x80000000);
+      expect(reader.isAtEnd()).assertTrue();
+    });
+
     it('rejectsOutOfRangeWriterValues', 0, () => {
       expect(didThrow((): void => new ProtoWriter().writeInt32(0x80000000))).assertTrue();
       expect(didThrow((): void => new ProtoWriter().writeUInt32(-1))).assertTrue();
