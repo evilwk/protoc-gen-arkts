@@ -17,6 +17,8 @@ message Envelope {
   repeated int32 values = 1;
   repeated string labels = 2;
   repeated SharedItem items = 3;
+  // 显式关闭 packed：编码按非 packed 写出，解码仍须接受两种编码。
+  repeated int32 unpacked_values = 10 [packed = false];
   map<string, SharedItem> item_by_name = 4;
   Nested nested = 5;
   State state = 6;

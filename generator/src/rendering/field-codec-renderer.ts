@@ -40,7 +40,8 @@ export class FieldCodecRenderer {
       return this.renderMapDecoder(field);
     }
 
-    if (field.repeated && field.packed) {
+    // 解码看 packable 而非 packed：声明为非 packed 的字段也必须接受 packed 输入。
+    if (field.repeated && field.packable) {
       return this.renderPackedRepeatedDecoder(field);
     }
 

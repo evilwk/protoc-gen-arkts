@@ -4,10 +4,10 @@ const MAX_FIELD_NUMBER: number = 0x1fffffff;
 const MAX_LENGTH: bigint = 0x7fffffffn;
 const MAX_LENGTH_NUMBER: number = 0x7fffffff;
 const MAX_VARINT_BYTES: number = 10;
+const MAX_TAG_VARINT_BYTES: number = 5;
 const INT32_MIN: number = -0x80000000;
 const INT32_MAX: number = 0x7fffffff;
 const UINT32_MAX: number = 0xffffffff;
-const UINT32_MAX_AS_BIGINT: bigint = 0xffffffffn;
 const INT64_MIN: bigint = -0x8000000000000000n;
 const INT64_MAX: bigint = 0x7fffffffffffffffn;
 const UINT64_MAX: bigint = 0xffffffffffffffffn;
@@ -320,7 +320,7 @@ export class ProtoReader {
     if (this.isAtEnd()) {
       return 0;
     }
-    const rawTag: bigint = this.readVarint();
+    const rawTag: bigint = this.readVarint(MAX_TAG_VARINT_BYTES);
     const fieldNumber: bigint = rawTag >> 3n;
     const wireType: number = Number(rawTag & 0x07n);
     if (fieldNumber < 1n || fieldNumber > BigInt(MAX_FIELD_NUMBER)) {
@@ -336,19 +336,18 @@ export class ProtoReader {
     return Number(BigInt.asIntN(32, this.readVarint()));
   }
 
+  /**
+   * 32 位字段在 wire 上按 64 位 varint 编码，超出 32 位的部分按规范截断而非报错。
+   */
   readUInt32(): number {
-    const value: bigint = this.readVarint();
-    if (value > UINT32_MAX_AS_BIGINT) {
-      throw new Error('Protobuf uint32 is out of range');
-    }
-    return Number(value);
+    return Number(BigInt.asUintN(32, this.readVarint()));
   }
 
+  /**
+   * 先把 wire 值截断到 32 位，再做 zigzag 解码；顺序反了会得到错误的负数。
+   */
   readSInt32(): number {
-    const value: bigint = this.readVarint();
-    if (value > UINT32_MAX_AS_BIGINT) {
-      throw new Error('Protobuf sint32 is out of range');
-    }
+    const value: bigint = BigInt.asUintN(32, this.readVarint());
     return Number((value >> 1n) ^ (-(value & 1n)));
   }
 
@@ -446,9 +445,15 @@ export class ProtoReader {
     }
   }
 
-  private readVarint(): bigint {
+  /**
+   * 读取 varint。
+   *
+   * maxBytes 限制允许的编码长度：值 varint 是 64 位，上限 10 字节；tag 是 32 位，
+   * 上限 5 字节，更长的编码即使数值合法也必须拒绝（overlong tag 属于畸形输入）。
+   */
+  private readVarint(maxBytes: number = MAX_VARINT_BYTES): bigint {
     let result: bigint = 0n;
-    for (let index: number = 0; index < MAX_VARINT_BYTES; index++) {
+    for (let index: number = 0; index < maxBytes; index++) {
       const current: number = this.readByte();
       if (index === MAX_VARINT_BYTES - 1 && current > 1) {
         throw new Error('Protobuf varint exceeds 64 bits');

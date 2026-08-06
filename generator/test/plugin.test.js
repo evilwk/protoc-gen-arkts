@@ -111,6 +111,18 @@ test('imports lang only when a registry is generated', () => {
   assert.match(shared, /import \{ collections \} from '@kit\.ArkTS';/);
 });
 
+// 显式 [packed = false] 的 repeated 字段：编码按非 packed 写出，但解码必须同时
+// 接受两种 tag —— 规范要求 parser 不依赖字段声明的 packed 形态。
+// 该不对称由 protobuf conformance 套件的 PackedInput.UnpackedOutput 一族守护。
+test('decodes both packed and unpacked input for an explicitly unpacked field', () => {
+  const complex = readFileSync(join(generateComplex(), 'Complex.ets'), 'utf8');
+  // 字段 10：非 packed tag = 80，packed tag = 82。
+  assert.match(complex, /case 80:\n\s+appendProtoValue\(message\.unpackedValues, reader\.readInt32\(\)\);/);
+  assert.match(complex, /case 82: \{/);
+  // 编码侧仍是一元素一 tag，不得退化成 packed 块。
+  assert.doesNotMatch(complex, /packedWriter[\s\S]{0,200}this\.unpackedValues/);
+});
+
 test('rejects an imported dependency that is neither generated nor declared', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-wkt-'));
   const result = spawnSync('protoc', [

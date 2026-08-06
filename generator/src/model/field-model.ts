@@ -23,7 +23,15 @@ export interface FieldModelBase extends ScalarShape {
   readonly type: number;
   readonly typeName: string;
   readonly repeated: boolean;
+  /** 编码形态：是否按 packed 写出。由 proto 声明决定。 */
   readonly packed: boolean;
+  /**
+   * 解码形态：类型是否允许 packed 编码。
+   *
+   * 与 packed 分开，因为规范要求 parser 无论字段声明为哪种，
+   * packed 与非 packed 的输入都必须接受。
+   */
+  readonly packable: boolean;
   readonly oneofIndex?: number;
 }
 

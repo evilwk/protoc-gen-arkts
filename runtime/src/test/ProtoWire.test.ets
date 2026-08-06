@@ -322,6 +322,34 @@ export default function protoWireTest(): void {
       expect(didThrow((): void => new ProtoWriter().writeTag(1, 6))).assertTrue();
     });
 
+    // 32 位字段在 wire 上按 64 位 varint 编码；超出 32 位的部分按规范截断，不得报错。
+    it('truncates32BitFieldsInsteadOfRejectingWideVarints', 0, () => {
+      // 0x200000000 截断到 32 位是 0。
+      const wideUInt32: ProtoReader = new ProtoReader(
+        collections.Uint8Array.from([0x80, 0x80, 0x80, 0x80, 0x20])
+      );
+      expect(wideUInt32.readUInt32()).assertEqual(0);
+
+      // 0x100000002 先截断为 2，再 zigzag 解码得 1；顺序反了会得到错误的负数。
+      const wideSInt32: ProtoReader = new ProtoReader(
+        collections.Uint8Array.from([0x82, 0x80, 0x80, 0x80, 0x10])
+      );
+      expect(wideSInt32.readSInt32()).assertEqual(1);
+    });
+
+    // tag 是 32 位值，最长 5 字节；更长的编码即使数值合法也属畸形输入。
+    it('rejectsOverlongTagVarints', 0, () => {
+      expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([
+        0x88, 0x80, 0x80, 0x80, 0x80, 0x00
+      ])).readTag())).assertTrue();
+
+      // 5 字节的最大合法 tag 仍须接受。
+      const maxTag: ProtoReader = new ProtoReader(
+        collections.Uint8Array.from([0xfd, 0xff, 0xff, 0xff, 0x0f])
+      );
+      expect(maxTag.readTag()).assertEqual(0xfffffffd);
+    });
+
     it('rejectsMalformedAndTruncatedInput', 0, () => {
       expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x00])).readTag())).assertTrue();
       expect(didThrow((): void => new ProtoReader(collections.Uint8Array.from([0x0e])).readTag())).assertTrue();

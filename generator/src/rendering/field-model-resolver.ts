@@ -171,7 +171,8 @@ export class FieldModelResolver {
       ? `${scalarShape.arkType} | undefined`
       : repeated ? `collections.Array<${scalarShape.arkType}>` : scalarShape.arkType;
 
-    const packed: boolean = repeated && isPackable(type) && rawField.options?.packed !== false;
+    const packable: boolean = repeated && isPackable(type);
+    const packed: boolean = packable && rawField.options?.packed !== false;
 
     const fieldBase: FieldModelBase = {
       protoName,
@@ -181,6 +182,7 @@ export class FieldModelResolver {
       typeName,
       repeated,
       packed,
+      packable,
       arkType,
       defaultValue: repeated ? `new collections.Array<${scalarShape.arkType}>()` : scalarShape.defaultValue,
       writerMethod: scalarShape.writerMethod,
@@ -231,6 +233,7 @@ export class FieldModelResolver {
       typeName,
       repeated: false,
       packed: false,
+      packable: false,
       arkType: `collections.Map<${mapKey.arkType}, ${mapValue.arkType}>`,
       defaultValue: `new collections.Map<${mapKey.arkType}, ${mapValue.arkType}>()`,
       writerMethod: '',
@@ -268,6 +271,7 @@ export class FieldModelResolver {
       typeName,
       repeated: false,
       packed: false,
+      packable: false,
       ...scalarShape
     };
 
