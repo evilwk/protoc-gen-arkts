@@ -1,0 +1,8 @@
+# protoc-gen-arkts 的已知 conformance 偏离。
+#
+# 这两条都源于同一个设计选择：
+# 1. decode 遇到未知字段直接跳过，不保留、不回写。
+# 2. 规范要求 proto3 实现保留未知字段并在 encode 时原样重新发出，因此 runner 判定失败。
+#
+Required.Proto3.ProtobufInput.UnknownOrdering.ProtobufOutput
+Required.Proto3.ProtobufInput.UnknownVarint.ProtobufOutput

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "build",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": ["../generator/node_modules/@types"],
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts", "native/**/*.ts"]
+}
