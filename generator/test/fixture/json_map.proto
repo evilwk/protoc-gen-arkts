@@ -1,6 +1,13 @@
 syntax = "proto3";
 package fixture.json;
 
+enum JsonState {
+  JSON_STATE_UNKNOWN = 0;
+  JSON_STATE_READY = 1;
+}
+
 message JsonMapFixture {
   map<int32, int32> values = 1;
+  map<string, JsonState> states = 2;
+  repeated JsonState history = 3;
 }

@@ -228,26 +228,44 @@ export default function protoWireTest(): void {
     });
 
     it('supportsPackedAndUnpackedComposition', 0, () => {
-      const packedWriter: ProtoWriter = new ProtoWriter();
-      packedWriter.writeSInt32(-1);
-      packedWriter.writeSInt32(0);
-      packedWriter.writeSInt32(1);
-
+      const packedValues: collections.Array<number> = new collections.Array<number>(-1, 0, 1);
       const writer: ProtoWriter = new ProtoWriter();
-      writer.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
-      writer.writeBytes(packedWriter.finish());
+      writer.writePackedSInt32(1, packedValues);
       writer.writeTag(1, ProtoWireType.VARINT);
       writer.writeSInt32(-2);
 
       const reader: ProtoReader = new ProtoReader(writer.finish());
       expect(reader.readTag()).assertEqual(0x0a);
-      const packedReader: ProtoReader = new ProtoReader(reader.readBytes());
-      expect(packedReader.readSInt32()).assertEqual(-1);
-      expect(packedReader.readSInt32()).assertEqual(0);
-      expect(packedReader.readSInt32()).assertEqual(1);
-      expect(packedReader.isAtEnd()).assertTrue();
+      const decoded: collections.Array<number> = new collections.Array<number>();
+      reader.readPackedSInt32(decoded);
+      expect(decoded.length).assertEqual(3);
+      expect(decoded[0]).assertEqual(-1);
+      expect(decoded[1]).assertEqual(0);
+      expect(decoded[2]).assertEqual(1);
       expect(reader.readTag()).assertEqual(0x08);
       expect(reader.readSInt32()).assertEqual(-2);
+
+      const emptyWriter: ProtoWriter = new ProtoWriter();
+      emptyWriter.writePackedInt32(1, new collections.Array<number>());
+      expect(emptyWriter.finish().length).assertEqual(0);
+    });
+
+    it('roundTripsMapEntryFramework', 0, () => {
+      const values: collections.Map<string, number> = new collections.Map<string, number>();
+      values.set('a', 7);
+      const writer: ProtoWriter = new ProtoWriter();
+      writer.writeMap<string, number>(1, values, ProtoWireType.LENGTH_DELIMITED, ProtoWireType.VARINT,
+        (entry: ProtoWriter, key: string): void => entry.writeString(key),
+        (entry: ProtoWriter, value: number): void => entry.writeInt32(value));
+
+      const reader: ProtoReader = new ProtoReader(writer.finish());
+      expect(reader.readTag()).assertEqual(0x0a);
+      const decoded: collections.Map<string, number> = new collections.Map<string, number>();
+      reader.readMapEntry<string, number>(decoded, '', 0, 0x0a, 0x10,
+        (entry: ProtoReader): string => entry.readString(),
+        (entry: ProtoReader): number => entry.readInt32());
+      expect(decoded.size).assertEqual(1);
+      expect(decoded.get('a')).assertEqual(7);
     });
 
     it('skipsEveryUnknownWireTypeAndContinues', 0, () => {

@@ -15,10 +15,7 @@ import { wireTypeNumber } from './scalar-shapes.js';
  * 根据已解析字段模型生成 encode/decode 片段，不再访问原始 descriptor。
  */
 export class FieldCodecRenderer {
-  public constructor(
-    private readonly ownerName: string,
-    private readonly oneofs: IOneofDescriptorProto[],
-  ) {}
+  public constructor(private readonly oneofs: IOneofDescriptorProto[]) {}
 
   public renderEncoder(field: FieldModel): string {
     if (field.kind === 'map') {
@@ -46,40 +43,6 @@ export class FieldCodecRenderer {
     }
 
     return this.renderTaggedDecoder(field);
-  }
-
-  public renderMapReader(field: MapFieldModel): string {
-    const mapKey: ValueFieldModel = field.mapKey;
-    const mapValue: ValueFieldModel = field.mapValue;
-    const keyRead: string = this.renderReadValue('reader', mapKey);
-    const valueRead: string = this.renderReadValue('reader', mapValue);
-
-    // prettier-ignore
-    const valueDefault: string = mapValue.kind === 'message'
-      ? `new ${mapValue.arkType}()`
-      : mapValue.defaultValue;
-
-    // 生成读取单个 map entry 的静态方法：逐字段解析 entry 后写回 map。
-    return renderSource`
-      private static read${toUpperCamel(field.name)}Entry(bytes: Uint8Array, message: ${this.ownerName}): void {
-        const reader: ProtoReader = new ProtoReader(bytes);
-        let key: ${mapKey.arkType} = ${mapKey.defaultValue};
-        let value: ${mapValue.arkType} = ${valueDefault};
-        while (!reader.isAtEnd()) {
-          const tag: number = reader.readTag();
-          switch (tag) {
-            case ${8 + wireTypeNumber(mapKey.wireType)}:
-              key = ${keyRead};
-              break;
-            case ${16 + wireTypeNumber(mapValue.wireType)}:
-              value = ${valueRead};
-              break;
-            default:
-              reader.skipField(Math.floor(tag / 8), tag & 0x07);
-          }
-        }
-        ProtoContainers.setMapValue(message.${field.name}, key, value);
-      }`;
   }
 
   /**
@@ -132,15 +95,8 @@ export class FieldCodecRenderer {
    * packed repeated 字段：所有元素先写入子 writer，再作为单个长度前缀块写出。
    */
   private renderPackedRepeatedEncoder(field: ValueFieldModel): string {
-    return renderSource`
-      if (this.${field.name}.length !== 0) {
-        const packedWriter: ProtoWriter = new ProtoWriter();
-        for (let index: number = 0; index < this.${field.name}.length; index++) {
-          ${this.renderWriteValue('packedWriter', field, `this.${field.name}[index]`)}
-        }
-        writer.writeTag(${field.number}, ProtoWireType.LENGTH_DELIMITED);
-        writer.writeBytes(packedWriter.finish());
-      }`;
+    const method: string = field.writerMethod.slice('write'.length);
+    return `writer.writePacked${method}(${field.number}, this.${field.name});`;
   }
 
   /**
@@ -149,21 +105,13 @@ export class FieldCodecRenderer {
   private renderMapEncoder(field: MapFieldModel): string {
     const mapKey: ValueFieldModel = field.mapKey;
     const mapValue: ValueFieldModel = field.mapValue;
+    const writeKey: string = withoutTrailingSemicolon(this.renderWriteValue('entryWriter', mapKey, 'key'));
+    const writeValue: string = withoutTrailingSemicolon(this.renderWriteValue('entryWriter', mapValue, 'value'));
     return renderSource`
-      const ${field.name}Keys: collections.Array<${mapKey.arkType}> = ProtoContainers.mapKeys(this.${field.name});
-      for (let index: number = 0; index < ${field.name}Keys.length; index++) {
-        const key: ${mapKey.arkType} = ${field.name}Keys[index];
-        const value: ${mapValue.arkType} | undefined = ProtoContainers.mapValue(this.${field.name}, key);
-        if (value !== undefined) {
-          const entryWriter: ProtoWriter = new ProtoWriter();
-          entryWriter.writeTag(1, ProtoWireType.${mapKey.wireType});
-          ${this.renderWriteValue('entryWriter', mapKey, 'key')}
-          entryWriter.writeTag(2, ProtoWireType.${mapValue.wireType});
-          ${this.renderWriteValue('entryWriter', mapValue, 'value')}
-          writer.writeTag(${field.number}, ProtoWireType.LENGTH_DELIMITED);
-          writer.writeBytes(entryWriter.finish());
-        }
-      }`;
+      writer.writeMap<${mapKey.arkType}, ${mapValue.arkType}>(
+        ${field.number}, this.${field.name}, ProtoWireType.${mapKey.wireType}, ProtoWireType.${mapValue.wireType},
+        (entryWriter: ProtoWriter, key: ${mapKey.arkType}) => ${writeKey},
+        (entryWriter: ProtoWriter, value: ${mapValue.arkType}) => ${writeValue});`;
   }
 
   private renderWriteValue(writer: string, field: ValueFieldModel, value: string): string {
@@ -177,9 +125,16 @@ export class FieldCodecRenderer {
    * map 字段：把 entry 字节交给对应的静态读取方法。
    */
   private renderMapDecoder(field: MapFieldModel): string {
+    const mapKey: ValueFieldModel = field.mapKey;
+    const mapValue: ValueFieldModel = field.mapValue;
+    const valueDefault: string = mapValue.kind === 'message' ? `new ${mapValue.arkType}()` : mapValue.defaultValue;
     return renderSource`
       case ${field.number * 8 + 2}:
-        ${this.ownerName}.read${toUpperCamel(field.name)}Entry(reader.readSlice(), message);
+        reader.readMapEntry<${mapKey.arkType}, ${mapValue.arkType}>(
+          message.${field.name}, ${mapKey.defaultValue}, ${valueDefault},
+          ${8 + wireTypeNumber(mapKey.wireType)}, ${16 + wireTypeNumber(mapValue.wireType)},
+          (entryReader: ProtoReader) => ${this.renderReadValue('entryReader', mapKey)},
+          (entryReader: ProtoReader) => ${this.renderReadValue('entryReader', mapValue)});
         break;`;
   }
 
@@ -225,6 +180,16 @@ export class FieldCodecRenderer {
     const packedRead: string = this.renderReadValue('packedReader', field);
     const unpackedAssignment: string = this.renderRepeatedAssignment(field, unpackedRead);
     const packedAssignment: string = this.renderRepeatedAssignment(field, packedRead);
+    if (field.kind !== 'enum') {
+      const method: string = field.readerMethod.slice('read'.length);
+      return renderSource`
+        case ${unpackedTag}:
+          ${unpackedAssignment}
+          break;
+        case ${packedTag}:
+          reader.readPacked${method}(message.${field.name});
+          break;`;
+    }
     return renderSource`
       case ${unpackedTag}:
         ${unpackedAssignment}
@@ -307,4 +272,8 @@ function referencedType(field: MessageFieldModel): string {
     return field.arkType.slice(arrayPrefix.length, -1);
   }
   return concreteType(field);
+}
+
+function withoutTrailingSemicolon(source: string): string {
+  return source.endsWith(';') ? source.slice(0, -1) : source;
 }

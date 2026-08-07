@@ -1,6 +1,6 @@
 import type { IOneofDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { DescriptorModel } from '../model/descriptor-model.js';
-import type { FieldModel, MapFieldModel, ValueFieldModel } from '../model/field-model.js';
+import type { FieldModel, ValueFieldModel } from '../model/field-model.js';
 import type { FileModel, MessageTypeSymbol } from '../model/symbols.js';
 import type { PluginOptions } from '../model/plugin.js';
 import { indent, requireArkMemberName, toUpperCamel } from '../naming.js';
@@ -31,7 +31,7 @@ export class ArkTSMessageRenderer {
     const resolver: FieldModelResolver = new FieldModelResolver(file, model, imports);
     this.fields = (symbol.message.field ?? []).map((field): FieldModel => resolver.resolve(field, symbol));
     this.requireUniqueMemberNames(file);
-    this.codec = new FieldCodecRenderer(symbol.arkName, this.oneofs);
+    this.codec = new FieldCodecRenderer(this.oneofs);
     this.jsonCodec = isSpecialWktMessage(symbol.fullName)
       ? new WktJsonCodecRenderer(symbol.fullName, symbol.arkName, this.oneofs, this.fields)
       : new JsonCodecRenderer(symbol.arkName, this.oneofs);
@@ -70,11 +70,6 @@ export class ArkTSMessageRenderer {
 
     const encoders: string = this.fields.map((field): string => this.codec.renderEncoder(field)).join('\n');
     const decoders: string = this.fields.map((field): string => this.codec.renderDecoder(field)).join('\n');
-    const mapReaders: string = this.fields
-      .filter((field): field is MapFieldModel => field.kind === 'map')
-      .map((field): string => this.codec.renderMapReader(field))
-      .join('\n\n');
-
     const methodParts: string[] = [];
     if (oneofMethods.length > 0) {
       methodParts.push(indent(oneofMethods.join('\n\n')));
@@ -114,9 +109,6 @@ export class ArkTSMessageRenderer {
           return message;
         }`),
     );
-    if (mapReaders.length > 0) {
-      methodParts.push(indent(mapReaders));
-    }
     if (this.json) {
       methodParts.push(
         indent(renderSource`

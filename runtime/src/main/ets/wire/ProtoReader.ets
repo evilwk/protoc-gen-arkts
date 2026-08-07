@@ -1,4 +1,5 @@
 import { collections, util } from '@kit.ArkTS';
+import { ProtoContainers } from '../ProtoContainers';
 import { isValidWireType, ProtoWireType } from './ProtoWireType';
 
 const MAX_FIELD_NUMBER: number = 0x1fffffff;
@@ -152,6 +153,96 @@ export class ProtoReader {
     const start: number = this.position;
     this.position += length;
     return this.bytes.subarray(start, start + length);
+  }
+
+  readPackedInt32(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readInt32());
+  }
+
+  readPackedUInt32(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readUInt32());
+  }
+
+  readPackedSInt32(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readSInt32());
+  }
+
+  readPackedFixed32(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readFixed32());
+  }
+
+  readPackedSFixed32(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readSFixed32());
+  }
+
+  readPackedFloat(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readFloat());
+  }
+
+  readPackedDouble(values: collections.Array<number>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readDouble());
+  }
+
+  readPackedBool(values: collections.Array<boolean>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readBool());
+  }
+
+  readPackedInt64(values: collections.Array<bigint>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readInt64());
+  }
+
+  readPackedUInt64(values: collections.Array<bigint>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readUInt64());
+  }
+
+  readPackedSInt64(values: collections.Array<bigint>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readSInt64());
+  }
+
+  readPackedFixed64(values: collections.Array<bigint>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readFixed64());
+  }
+
+  readPackedSFixed64(values: collections.Array<bigint>): void {
+    const packed: ProtoReader = new ProtoReader(this.readSlice());
+    while (!packed.isAtEnd()) ProtoContainers.append(values, packed.readSFixed64());
+  }
+
+  readMapEntry<K, V>(
+    values: collections.Map<K, V>,
+    defaultKey: K,
+    defaultValue: V,
+    keyTag: number,
+    valueTag: number,
+    readKey: (reader: ProtoReader) => K,
+    readValue: (reader: ProtoReader) => V
+  ): void {
+    const entry: ProtoReader = new ProtoReader(this.readSlice());
+    let key: K = defaultKey;
+    let value: V = defaultValue;
+    while (!entry.isAtEnd()) {
+      const tag: number = entry.readTag();
+      if (tag === keyTag) {
+        key = readKey(entry);
+      } else if (tag === valueTag) {
+        value = readValue(entry);
+      } else {
+        entry.skipField(Math.floor(tag / 8), tag & 0x07);
+      }
+    }
+    ProtoContainers.setMapValue(values, key, value);
   }
 
   skipField(fieldNumber: number, wireType: number): void {

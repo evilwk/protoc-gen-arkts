@@ -33,7 +33,11 @@ test('generates nested, imported, repeated, map, and oneof fields', () => {
   const complex = readFileSync(join(outputDir, 'Complex.ets'), 'utf8');
   assert.match(complex, /export class EnvelopeNested/);
   assert.match(complex, /collections\.Array<number>/);
-  assert.match(complex, /const packedWriter: ProtoWriter/);
+  assert.match(complex, /writer\.writePackedInt32\(1, this\.values\);/);
+  assert.match(complex, /reader\.readPackedInt32\(message\.values\);/);
+  assert.match(complex, /writer\.writeMap<string, SharedItem>\(/);
+  assert.match(complex, /reader\.readMapEntry<string, SharedItem>\(/);
+  assert.doesNotMatch(complex, /private static readItemByNameEntry/);
   assert.match(complex, /collections\.Map<string, SharedItem>/);
   assert.match(complex, /setEmail\(value: string\)/);
   assert.match(complex, /SharedItem\.mergeFrom/);
@@ -64,9 +68,9 @@ test('uses proto3 optional presence when generating JSON', () => {
   const generated = generateOptional(true);
   assert.match(
     generated,
-    /if \(this\.countCase === 1\) \{\n\s+const fieldInfo: FieldInfo = new FieldInfo\(1, "count"\);/
+    /ProtoJson\.traverseNumberField\(visitor, this\.countCase === 1, this\.count, ProtoValueKind\.INT32, 1, "count"\);/
   );
-  assert.match(generated, /case "count":\n\s+ProtoJson\.requireUnseenField[\s\S]*?message\.setCount\(/);
+  assert.match(generated, /case "count":\n\s+if \(ProtoJson\.skipNullField\([\s\S]*?message\.setCount\(/);
 });
 
 test('resolves cross-group imports in both directions', () => {
@@ -151,9 +155,9 @@ test('decodes both packed and unpacked input for an explicitly unpacked field', 
   const complex = readFileSync(join(generateComplex(), 'Complex.ets'), 'utf8');
   // 字段 10：非 packed tag = 80，packed tag = 82。
   assert.match(complex, /case 80:\n\s+ProtoContainers\.append\(message\.unpackedValues, reader\.readInt32\(\)\);/);
-  assert.match(complex, /case 82: \{/);
+  assert.match(complex, /case 82:\n\s+reader\.readPackedInt32\(message\.unpackedValues\);/);
   // 编码侧仍是一元素一 tag，不得退化成 packed 块。
-  assert.doesNotMatch(complex, /packedWriter[\s\S]{0,200}this\.unpackedValues/);
+  assert.doesNotMatch(complex, /writePackedInt32\(10, this\.unpackedValues\)/);
 });
 
 test('rejects an imported dependency that is neither generated nor declared', () => {
@@ -209,7 +213,7 @@ test('generates canonical JSON methods for Timestamp', () => {
   assert.match(timestamp, /return ProtoJson\.writeTimestamp\(this\.seconds, this\.nanos\);/);
   assert.match(timestamp, /const value = ProtoJson\.readTimestamp\(reader\);/);
   // WKT 的 toJson() 可能返回字符串，父 message 只能整体嵌入而不能流式展开。
-  assert.match(probe, /visitor\.visitMessage\(this\.createdAt, fieldInfo\);/);
+  assert.match(probe, /ProtoJson\.visitMessageField\(visitor, this\.createdAt !== undefined, this\.createdAt,/);
 });
 
 test('generates canonical JSON methods for Struct, Value, and ListValue', () => {
@@ -260,10 +264,9 @@ test('keeps ordinary generation available when json is enabled', () => {
     generated,
     /import \{[^}]*\b(?:readInt32|readInt64|encodeBase64|decodeBase64)\b[^}]*\}/
   );
-  // 字段元数据是编译期常量，必须提为 static 而不是每次 traverse 都新建。
-  // protoName 在前，命名不同的字段必须分别传入。
-  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(1, "int32_value", "int32Value"\);/);
-  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(\d+, "bool_value", "boolValue"\);/);
+  // 字段元数据保留 protoName/jsonName；命名不同时必须分别传入。
+  assert.match(generated, /ProtoJson\.traverseNumberField\([^\n]+1, "int32_value", "int32Value"\);/);
+  assert.match(generated, /ProtoJson\.traverseBoolField\([^\n]+"bool_value", "boolValue"\);/);
 });
 
 test('streams ordinary submessages into the parent JSON writer', () => {
@@ -279,12 +282,12 @@ test('streams ordinary submessages into the parent JSON writer', () => {
   // 普通子 message 直接写入父 writer，避免为每层嵌套各自建串再拼接。
   assert.match(
     generated,
-    /visitor\.beginMessage\(fieldInfo\);\n\s*this\.profile\.traverse\(visitor\);\n\s*visitor\.endMessage\(fieldInfo\);/
+    /ProtoJson\.traverseMessageField\(visitor, this\.nested !== undefined, this\.nested, 5, "nested"\);/
   );
   assert.doesNotMatch(generated, /visitor\.visitMessage\(this\.profile, /);
-  // 单词字段两种命名一致，省略 jsonName 交给 FieldInfo 构造函数回填。
-  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(1, "values"\);/);
-  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(10, "unpacked_values", "unpackedValues"\);/);
+  // 单词字段两种命名一致时传 undefined，命名不同时保留显式 jsonName。
+  assert.match(generated, /visitor, this\.values, 1, "values", undefined,/);
+  assert.match(generated, /visitor, this\.unpackedValues, 10, "unpacked_values", "unpackedValues",/);
 });
 
 test('converts non-string map keys to JSON object names', () => {
@@ -297,6 +300,10 @@ test('converts non-string map keys to JSON object names', () => {
   ], { cwd: vectorDir });
   const generated = readFileSync(join(outputDir, 'JsonMap.ets'), 'utf8');
   assert.match(generated, /visitor\.mapKey\(`\$\{key\}`\);/);
+  assert.match(generated, /ProtoJson\.readMap<number, number>\(reader,/);
+  assert.match(generated, /ProtoJson\.readRepeatedEnum\(reader,/);
+  assert.match(generated, /return knownEnumValue \? value : undefined;/);
+  assert.match(generated, /ProtoJson\.readMap<string, number>\(reader,[\s\S]*?return knownEnumValue \? value : undefined;/);
 });
 
 test('keeps JSON APIs and imports out of default generation', () => {
@@ -316,5 +323,5 @@ test('initializes generated oneof JSON state before conflict checks', () => {
   ], { cwd: vectorDir });
   const generated = readFileSync(join(outputDir, 'Complex.ets'), 'utf8');
   assert.match(generated, /const oneofCases: number\[\] = \[0\];/);
-  assert.match(generated, /if \(oneofCases\[0\] !== 0\)/);
+  assert.match(generated, /ProtoJson\.requireOneof\(oneofCases, 0, 7, "contact"\);/);
 });

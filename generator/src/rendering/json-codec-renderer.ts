@@ -65,35 +65,34 @@ export class JsonCodecRenderer {
     const fieldInfo: string = 'fieldInfo';
     const jsonName: string = field.jsonName === field.protoName ? '' : `, ${quote(field.jsonName)}`;
     const declaration: string = `const fieldInfo: FieldInfo = new FieldInfo(${field.number}, ${quote(field.protoName)}${jsonName});`;
+    const runtimeJsonName: string = field.jsonName === field.protoName ? 'undefined' : quote(field.jsonName);
     if (field.kind === 'map') {
       return renderSource`
-        if (this.${field.name}.size !== 0) {
-          ${declaration}
-          visitor.beginMap(${fieldInfo});
-          const keys: collections.Array<${field.mapKey.arkType}> = ProtoContainers.mapKeys(this.${field.name});
-          for (let index: number = 0; index < keys.length; index++) {
-            const key: ${field.mapKey.arkType} = keys[index];
-            const value: ${field.mapValue.arkType} | undefined = ProtoContainers.mapValue(this.${field.name}, key);
-            if (value !== undefined) {
-              visitor.mapKey(${this.mapKeyToString('key', field.mapKey)});
-              ${this.renderVisitValue(field.mapValue, 'value', fieldInfo)}
-            }
-          }
-          visitor.endMap(${fieldInfo});
-        }`;
+        ProtoJson.traverseMap<${field.mapKey.arkType}, ${field.mapValue.arkType}>(
+          visitor, this.${field.name}, ${field.number}, ${quote(field.protoName)}, ${runtimeJsonName},
+          (key: ${field.mapKey.arkType}, value: ${field.mapValue.arkType}, fieldInfo: FieldInfo) => {
+            visitor.mapKey(${this.mapKeyToString('key', field.mapKey)});
+            ${this.renderVisitValue(field.mapValue, 'value', fieldInfo)}
+          });`;
     }
     if (field.repeated) {
+      const elementType: string = repeatedElementType(field);
+      const visit: string = this.renderVisitValue(field, 'value', fieldInfo);
+      const callback: string = visit.includes('\n')
+        ? renderSource`
+            (value: ${elementType}, fieldInfo: FieldInfo) => {
+              ${visit}
+            }`
+        : `(value: ${elementType}, fieldInfo: FieldInfo) => ${withoutTrailingSemicolon(visit)}`;
       return renderSource`
-        if (this.${field.name}.length !== 0) {
-          ${declaration}
-          visitor.beginRepeated(${fieldInfo});
-          for (let index: number = 0; index < this.${field.name}.length; index++) {
-            ${this.renderVisitValue(field, `this.${field.name}[index]`, fieldInfo)}
-          }
-          visitor.endRepeated(${fieldInfo});
-        }`;
+        ProtoJson.traverseRepeated<${elementType}>(
+          visitor, this.${field.name}, ${field.number}, ${quote(field.protoName)}, ${runtimeJsonName},
+          ${callback});`;
     }
     const condition: string = this.traversalCondition(field);
+    if (field.kind !== 'enum') {
+      return this.renderSingularTraversal(field, condition);
+    }
     return renderSource`
       if (${condition}) {
         ${declaration}
@@ -101,15 +100,41 @@ export class JsonCodecRenderer {
       }`;
   }
 
+  private renderSingularTraversal(field: ValueFieldModel, condition: string): string {
+    const jsonName: string = field.jsonName === field.protoName ? '' : `, ${quote(field.jsonName)}`;
+    const metadata: string = `${field.number}, ${quote(field.protoName)}${jsonName}`;
+    const value: string = `this.${field.name}`;
+    if (field.kind === 'message') {
+      const method: string = isSpecialWktMessage(field.symbol.fullName)
+        ? 'visitMessageField'
+        : 'traverseMessageField';
+      return `ProtoJson.${method}(visitor, ${condition}, ${value}, ${metadata});`;
+    }
+    if (isBytesType(field.type)) {
+      return `ProtoJson.traverseBytesField(visitor, ${condition}, ${value}, ${metadata});`;
+    }
+    const typeName: string = scalarTypeName(field.type) ?? '';
+    // prettier-ignore
+    if (typeName === 'int64' || typeName === 'uint64' || typeName === 'sint64' ||
+      typeName === 'fixed64' || typeName === 'sfixed64'
+    ) {
+      return `ProtoJson.traverseBigIntField(visitor, ${condition}, ${value}, ProtoValueKind.${kindFor(typeName)}, ${metadata});`;
+    }
+    if (typeName === 'bool') {
+      return `ProtoJson.traverseBoolField(visitor, ${condition}, ${value}, ${metadata});`;
+    }
+    if (typeName === 'string') {
+      return `ProtoJson.traverseStringField(visitor, ${condition}, ${value}, ${metadata});`;
+    }
+    return `ProtoJson.traverseNumberField(visitor, ${condition}, ${value}, ProtoValueKind.${kindFor(typeName)}, ${metadata});`;
+  }
+
   private renderVisitValue(field: ValueFieldModel, value: string, fieldInfo: string): string {
     if (field.kind === 'message') {
       if (isSpecialWktMessage(field.symbol.fullName)) {
         return `visitor.visitMessage(${value}, ${fieldInfo});`;
       }
-      return renderSource`
-        visitor.beginMessage(${fieldInfo});
-        ${value}.traverse(visitor);
-        visitor.endMessage(${fieldInfo});`;
+      return `ProtoJson.traverseMessage(visitor, ${fieldInfo}, ${value});`;
     }
     if (field.kind === 'enum') {
       return this.renderEnumVisit(field, value, fieldInfo);
@@ -150,8 +175,7 @@ export class JsonCodecRenderer {
 
   private renderReadCase(field: FieldModel): string {
     const statements: string = [
-      `ProtoJson.requireUnseenField(seenFields, ${field.number});`,
-      this.renderNullGuard(field),
+      this.renderReadGuard(field),
       this.renderCaseOneofGuard(field),
       this.renderReadBody(field),
       'break;',
@@ -178,15 +202,11 @@ export class JsonCodecRenderer {
    * JSON null 表示"保持默认值"，因此读掉即可；
    * NullValue 与 Value 例外，null 是它们的有效取值。
    */
-  private renderNullGuard(field: FieldModel): string {
+  private renderReadGuard(field: FieldModel): string {
     if (acceptsJsonNullAsValue(field)) {
-      return '';
+      return `ProtoJson.requireUnseenField(seenFields, ${field.number});`;
     }
-    return renderSource`
-      if (ProtoJson.isNull(reader)) {
-        reader.readNull();
-        break;
-      }`;
+    return `if (ProtoJson.skipNullField(reader, seenFields, ${field.number})) { break; }`;
   }
 
   private renderCaseOneofGuard(field: FieldModel): string {
@@ -234,11 +254,7 @@ export class JsonCodecRenderer {
 
   private renderOneofGuard(field: ValueFieldModel): string {
     const index: number = field.oneofIndex ?? 0;
-    return renderSource`
-      if (oneofCases[${index}] !== 0) {
-        throw new Error('Multiple JSON fields set in oneof ${quote(this.oneofs[index]?.name ?? '')}');
-      }
-      oneofCases[${index}] = ${field.number};`;
+    return `ProtoJson.requireOneof(oneofCases, ${index}, ${field.number}, ${quote(this.oneofs[index]?.name ?? '')});`;
   }
 
   private renderReadSingular(field: ValueFieldModel): string {
@@ -249,25 +265,20 @@ export class JsonCodecRenderer {
   }
 
   private renderReadRepeated(field: ValueFieldModel): string {
-    return renderSource`
-      reader.beginArray();
-      while (reader.hasMoreElements()) {
-        ${this.renderRepeatedElement(field)}
-      }
-      reader.endArray();`;
-  }
-
-  /**
-   * repeated 元素的读取与追加。
-   *
-   * enum 需要 knownEnumValue 判定，读取与写回都由 renderEnumAssignment 负责；
-   * 其余类型只是把读到的值追加进容器。
-   */
-  private renderRepeatedElement(field: ValueFieldModel): string {
     if (field.kind === 'enum') {
-      return this.renderEnumAssignment(field, `ProtoContainers.append(message.${field.name}, value);`);
+      return renderSource`
+        ProtoJson.readRepeatedEnum(reader,
+          (value: number) => ProtoContainers.append(message.${field.name}, value),
+          (): number | undefined => {
+            ${this.renderEnumRead(field)}
+            return knownEnumValue ? value : undefined;
+          });`;
     }
-    return `ProtoContainers.append(message.${field.name}, ${this.renderReadValue(field)});`;
+    const elementType: string = repeatedElementType(field);
+    return renderSource`
+      ProtoJson.readRepeated<${elementType}>(reader,
+        (value: ${elementType}) => ProtoContainers.append(message.${field.name}, value),
+        () => ${this.renderReadValue(field)});`;
   }
 
   /**
@@ -293,32 +304,20 @@ export class JsonCodecRenderer {
   }
 
   private renderReadMap(field: MapFieldModel): string {
-    const key: string = this.renderMapKey(field.mapKey).replace('{keyText}', 'keyText');
+    const key: string = this.renderMapKey(field.mapKey).replace('{keyText}', 'text');
+    const readValue: string = field.mapValue.kind === 'enum'
+      ? renderSource`
+          (): number | undefined => {
+            ${this.renderEnumRead(field.mapValue)}
+            return knownEnumValue ? value : undefined;
+          }`
+      : `() => ${this.renderReadValue(field.mapValue)}`;
     return renderSource`
-      reader.beginObject();
-      while (reader.hasMoreMembers()) {
-        const keyText: string = reader.readKey();
-        const key: ${field.mapKey.arkType} = ${key};
-        ${this.renderMapEntryStore(field)}
-      }
-      reader.endObject();`;
-  }
-
-  /**
-   * map entry 的取值与写回；enum value 需要 knownEnumValue 判定，未知值整条 entry 丢弃。
-   */
-  private renderMapEntryStore(field: MapFieldModel): string {
-    const store: string = `ProtoContainers.setMapValue(message.${field.name}, key, value);`;
-    if (field.mapValue.kind === 'enum') {
-      return renderSource`
-        ${this.renderEnumRead(field.mapValue)}
-        if (knownEnumValue) {
-          ${store}
-        }`;
-    }
-    return renderSource`
-      const value: ${field.mapValue.arkType} = ${this.renderReadValue(field.mapValue)};
-      ${store}`;
+      ProtoJson.readMap<${field.mapKey.arkType}, ${field.mapValue.arkType}>(reader,
+        (key: ${field.mapKey.arkType}, value: ${field.mapValue.arkType}) =>
+          ProtoContainers.setMapValue(message.${field.name}, key, value),
+        (text: string) => ${key},
+        ${readValue});`;
   }
 
   /**
@@ -437,4 +436,16 @@ function kindFor(typeName: string): string {
 
 function quote(value: string): string {
   return JSON.stringify(value);
+}
+
+function repeatedElementType(field: ValueFieldModel): string {
+  const prefix: string = 'collections.Array<';
+  if (!field.arkType.startsWith(prefix) || !field.arkType.endsWith('>')) {
+    throw new Error(`Expected repeated field type, got ${field.arkType}`);
+  }
+  return field.arkType.slice(prefix.length, -1);
+}
+
+function withoutTrailingSemicolon(source: string): string {
+  return source.endsWith(';') ? source.slice(0, -1) : source;
 }

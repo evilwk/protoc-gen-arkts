@@ -1,5 +1,6 @@
 import { collections, util } from '@kit.ArkTS';
-import { isValidWireType } from './ProtoWireType';
+import { ProtoContainers } from '../ProtoContainers';
+import { isValidWireType, ProtoWireType } from './ProtoWireType';
 
 const MAX_FIELD_NUMBER: number = 0x1fffffff;
 const MAX_LENGTH_NUMBER: number = 0x7fffffff;
@@ -119,6 +120,120 @@ export class ProtoWriter {
     }
   }
 
+  writePackedInt32(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeInt32(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedUInt32(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeUInt32(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedSInt32(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeSInt32(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedFixed32(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeFixed32(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedSFixed32(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeSFixed32(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedFloat(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeFloat(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedDouble(fieldNumber: number, values: collections.Array<number>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeDouble(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedBool(fieldNumber: number, values: collections.Array<boolean>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeBool(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedInt64(fieldNumber: number, values: collections.Array<bigint>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeInt64(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedUInt64(fieldNumber: number, values: collections.Array<bigint>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeUInt64(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedSInt64(fieldNumber: number, values: collections.Array<bigint>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeSInt64(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedFixed64(fieldNumber: number, values: collections.Array<bigint>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeFixed64(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writePackedSFixed64(fieldNumber: number, values: collections.Array<bigint>): void {
+    if (values.length === 0) return;
+    const packed: ProtoWriter = new ProtoWriter();
+    for (let index: number = 0; index < values.length; index++) packed.writeSFixed64(values[index]);
+    this.writeDelimited(fieldNumber, packed);
+  }
+
+  writeMap<K, V>(
+    fieldNumber: number,
+    values: collections.Map<K, V>,
+    keyWireType: number,
+    valueWireType: number,
+    writeKey: (writer: ProtoWriter, key: K) => void,
+    writeValue: (writer: ProtoWriter, value: V) => void
+  ): void {
+    const keys: collections.Array<K> = ProtoContainers.mapKeys(values);
+    for (let index: number = 0; index < keys.length; index++) {
+      const key: K = keys[index];
+      const value: V | undefined = ProtoContainers.mapValue(values, key);
+      if (value !== undefined) {
+        const entry: ProtoWriter = new ProtoWriter();
+        entry.writeTag(1, keyWireType);
+        writeKey(entry, key);
+        entry.writeTag(2, valueWireType);
+        writeValue(entry, value);
+        this.writeDelimited(fieldNumber, entry);
+      }
+    }
+  }
+
   /**
    * 返回 Sendable bytes，供写入 bytes 字段或跨线程传递。
    */
@@ -140,6 +255,11 @@ export class ProtoWriter {
       remaining >>= 7n;
     }
     this.writeByte(Number(remaining));
+  }
+
+  private writeDelimited(fieldNumber: number, writer: ProtoWriter): void {
+    this.writeTag(fieldNumber, ProtoWireType.LENGTH_DELIMITED);
+    this.writeBytes(writer.finish());
   }
 
   /**

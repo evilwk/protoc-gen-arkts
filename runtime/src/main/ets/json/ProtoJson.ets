@@ -3,7 +3,10 @@ import { JsonReader, parseExactInteger } from './JsonReader';
 import { JsonToken } from './JsonToken';
 import { JsonWriter } from './JsonWriter';
 import { JsonEncodingVisitor } from './JsonEncodingVisitor';
-import { ProtoMessage } from '../visitor/ProtoVisitor';
+import { ProtoContainers } from '../ProtoContainers';
+import { FieldInfo } from '../visitor/FieldInfo';
+import { ProtoValueKind } from '../visitor/ProtoValueKind';
+import { ProtoMessage, ProtoVisitor } from '../visitor/ProtoVisitor';
 import { decodeBase64, encodeBase64, formatJsonNumber, quoteJson } from './JsonSupport';
 import {
   ProtoJsonTimeValue, ProtoJsonWkt
@@ -45,6 +48,207 @@ export class ProtoJson {
       throw new Error(`Duplicate JSON field: ${fieldNumber}`);
     }
     seen.add(fieldNumber);
+  }
+
+  static skipNull(reader: JsonReader): boolean {
+    if (!ProtoJson.isNull(reader)) {
+      return false;
+    }
+    reader.readNull();
+    return true;
+  }
+
+  static skipNullField(reader: JsonReader, seen: Set<number>, fieldNumber: number): boolean {
+    ProtoJson.requireUnseenField(seen, fieldNumber);
+    return ProtoJson.skipNull(reader);
+  }
+
+  static requireOneof(
+    oneofCases: number[],
+    index: number,
+    fieldNumber: number,
+    oneofName: string
+  ): void {
+    if (oneofCases[index] !== 0) {
+      throw new Error(`Multiple JSON fields set in oneof "${oneofName}"`);
+    }
+    oneofCases[index] = fieldNumber;
+  }
+
+  static readRepeated<T>(
+    reader: JsonReader,
+    append: (value: T) => void,
+    readElement: () => T
+  ): void {
+    reader.beginArray();
+    while (reader.hasMoreElements()) {
+      append(readElement());
+    }
+    reader.endArray();
+  }
+
+  static readRepeatedEnum(
+    reader: JsonReader,
+    append: (value: number) => void,
+    readElement: () => number | undefined
+  ): void {
+    reader.beginArray();
+    while (reader.hasMoreElements()) {
+      const value: number | undefined = readElement();
+      if (value !== undefined) {
+        append(value);
+      }
+    }
+    reader.endArray();
+  }
+
+  static readMap<K, V>(
+    reader: JsonReader,
+    setEntry: (key: K, value: V) => void,
+    readKey: (text: string) => K,
+    readValue: () => V | undefined
+  ): void {
+    reader.beginObject();
+    while (reader.hasMoreMembers()) {
+      const key: K = readKey(reader.readKey());
+      const value: V | undefined = readValue();
+      if (value !== undefined) {
+        setEntry(key, value);
+      }
+    }
+    reader.endObject();
+  }
+
+  static traverseRepeated<T>(
+    visitor: ProtoVisitor,
+    values: collections.Array<T>,
+    fieldNumber: number,
+    protoName: string,
+    jsonName: string | undefined,
+    visit: (value: T, field: FieldInfo) => void
+  ): void {
+    if (values.length === 0) {
+      return;
+    }
+    const field: FieldInfo = new FieldInfo(fieldNumber, protoName, jsonName);
+    visitor.beginRepeated(field);
+    for (let index: number = 0; index < values.length; index++) {
+      visit(values[index], field);
+    }
+    visitor.endRepeated(field);
+  }
+
+  static traverseMap<K, V>(
+    visitor: ProtoVisitor,
+    values: collections.Map<K, V>,
+    fieldNumber: number,
+    protoName: string,
+    jsonName: string | undefined,
+    visit: (key: K, value: V, field: FieldInfo) => void
+  ): void {
+    if (values.size === 0) {
+      return;
+    }
+    const field: FieldInfo = new FieldInfo(fieldNumber, protoName, jsonName);
+    visitor.beginMap(field);
+    const keys: collections.Array<K> = ProtoContainers.mapKeys(values);
+    for (let index: number = 0; index < keys.length; index++) {
+      const key: K = keys[index];
+      const value: V | undefined = ProtoContainers.mapValue(values, key);
+      if (value !== undefined) {
+        visit(key, value, field);
+      }
+    }
+    visitor.endMap(field);
+  }
+
+  static traverseMessage(visitor: ProtoVisitor, field: FieldInfo, message: ProtoMessage): void {
+    visitor.beginMessage(field);
+    message.traverse(visitor);
+    visitor.endMessage(field);
+  }
+
+  static traverseNumberField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    value: number,
+    kind: ProtoValueKind,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present) visitor.visitNumber(value, kind, new FieldInfo(fieldNumber, protoName, jsonName));
+  }
+
+  static traverseBigIntField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    value: bigint,
+    kind: ProtoValueKind,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present) visitor.visitBigInt(value, kind, new FieldInfo(fieldNumber, protoName, jsonName));
+  }
+
+  static traverseBoolField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    value: boolean,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present) visitor.visitBool(value, new FieldInfo(fieldNumber, protoName, jsonName));
+  }
+
+  static traverseStringField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    value: string,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present) visitor.visitString(value, new FieldInfo(fieldNumber, protoName, jsonName));
+  }
+
+  static traverseBytesField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    value: collections.Uint8Array,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present) visitor.visitBytes(value, new FieldInfo(fieldNumber, protoName, jsonName));
+  }
+
+  static traverseMessageField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    message: ProtoMessage | undefined,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present && message !== undefined) {
+      ProtoJson.traverseMessage(visitor, new FieldInfo(fieldNumber, protoName, jsonName), message);
+    }
+  }
+
+  static visitMessageField(
+    visitor: ProtoVisitor,
+    present: boolean,
+    message: ProtoMessage | undefined,
+    fieldNumber: number,
+    protoName: string,
+    jsonName?: string
+  ): void {
+    if (present && message !== undefined) {
+      visitor.visitMessage(message, new FieldInfo(fieldNumber, protoName, jsonName));
+    }
   }
 
   static readInt32(reader: JsonReader): number {

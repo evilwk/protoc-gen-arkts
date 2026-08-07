@@ -20,7 +20,7 @@ test('matches the locked generated-source SHA-256 baseline', () => {
     'Complex.ets': sha256(readFileSync(join(complex, 'Complex.ets'))),
     'Shared.ets': sha256(readFileSync(join(complex, 'Shared.ets')))
   }, {
-    'Complex.ets': '921a140a57ea171049c126ee0480303467788c122d610f3216518f00de1431bc',
+    'Complex.ets': '886651c0cbe5513892388dc0edf5064a18d0ce95f64c30771e8562acc054fccc',
     'Shared.ets': 'a9ccfd3da4a6457ab5aa3bbb0d018524d4351949639e4bc6afbc35c8a55cd4cc'
   });
 

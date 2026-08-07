@@ -90,18 +90,9 @@ export class Profile implements ProtoMessage {
   }
 
   traverse(visitor: ProtoVisitor): void {
-    if (this.nickname !== '') {
-      const fieldInfo: FieldInfo = new FieldInfo(1, "nickname");
-      visitor.visitString(this.nickname, fieldInfo);
-    }
-    if (this.age !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(2, "age");
-      visitor.visitNumber(this.age, ProtoValueKind.INT32, fieldInfo);
-    }
-    if (this.levelCase === 3) {
-      const fieldInfo: FieldInfo = new FieldInfo(3, "level");
-      visitor.visitNumber(this.level, ProtoValueKind.INT32, fieldInfo);
-    }
+    ProtoJson.traverseStringField(visitor, this.nickname !== '', this.nickname, 1, "nickname");
+    ProtoJson.traverseNumberField(visitor, this.age !== 0, this.age, ProtoValueKind.INT32, 2, "age");
+    ProtoJson.traverseNumberField(visitor, this.levelCase === 3, this.level, ProtoValueKind.INT32, 3, "level");
   }
 
   toJson(): string {
@@ -124,31 +115,16 @@ export class Profile implements ProtoMessage {
       const key: string = reader.readKey();
       switch (key) {
         case "nickname":
-          ProtoJson.requireUnseenField(seenFields, 1);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 1)) { break; }
           message.nickname = ProtoJson.readString(reader);
           break;
         case "age":
-          ProtoJson.requireUnseenField(seenFields, 2);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 2)) { break; }
           message.age = ProtoJson.readInt32(reader);
           break;
         case "level":
-          ProtoJson.requireUnseenField(seenFields, 3);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          if (oneofCases[0] !== 0) {
-            throw new Error('Multiple JSON fields set in oneof "_level"');
-          }
-          oneofCases[0] = 3;
+          if (ProtoJson.skipNullField(reader, seenFields, 3)) { break; }
+          ProtoJson.requireOneof(oneofCases, 0, 3, "_level");
           message.setLevel(ProtoJson.readInt32(reader));
           break;
         default:
@@ -230,32 +206,15 @@ export class Envelope implements ProtoMessage {
       writer.writeTag(3, ProtoWireType.VARINT);
       writer.writeInt32(this.status);
     }
-    if (this.scores.length !== 0) {
-      const packedWriter: ProtoWriter = new ProtoWriter();
-      for (let index: number = 0; index < this.scores.length; index++) {
-        packedWriter.writeInt32(this.scores[index]);
-      }
-      writer.writeTag(4, ProtoWireType.LENGTH_DELIMITED);
-      writer.writeBytes(packedWriter.finish());
-    }
+    writer.writePackedInt32(4, this.scores);
     for (let index: number = 0; index < this.tags.length; index++) {
       writer.writeTag(5, ProtoWireType.LENGTH_DELIMITED);
       writer.writeString(this.tags[index]);
     }
-    const countersKeys: collections.Array<string> = ProtoContainers.mapKeys(this.counters);
-    for (let index: number = 0; index < countersKeys.length; index++) {
-      const key: string = countersKeys[index];
-      const value: number | undefined = ProtoContainers.mapValue(this.counters, key);
-      if (value !== undefined) {
-        const entryWriter: ProtoWriter = new ProtoWriter();
-        entryWriter.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
-        entryWriter.writeString(key);
-        entryWriter.writeTag(2, ProtoWireType.VARINT);
-        entryWriter.writeInt32(value);
-        writer.writeTag(6, ProtoWireType.LENGTH_DELIMITED);
-        writer.writeBytes(entryWriter.finish());
-      }
-    }
+    writer.writeMap<string, number>(
+      6, this.counters, ProtoWireType.LENGTH_DELIMITED, ProtoWireType.VARINT,
+      (entryWriter: ProtoWriter, key: string) => entryWriter.writeString(key),
+      (entryWriter: ProtoWriter, value: number) => entryWriter.writeInt32(value));
     if (this.profile !== undefined) {
       writer.writeTag(7, ProtoWireType.LENGTH_DELIMITED);
       writer.writeBytes(this.profile.encode());
@@ -315,18 +274,18 @@ export class Envelope implements ProtoMessage {
         case 32:
           ProtoContainers.append(message.scores, reader.readInt32());
           break;
-        case 34: {
-          const packedReader: ProtoReader = new ProtoReader(reader.readSlice());
-          while (!packedReader.isAtEnd()) {
-            ProtoContainers.append(message.scores, packedReader.readInt32());
-          }
+        case 34:
+          reader.readPackedInt32(message.scores);
           break;
-        }
         case 42:
           ProtoContainers.append(message.tags, reader.readString());
           break;
         case 50:
-          Envelope.readCountersEntry(reader.readSlice(), message);
+          reader.readMapEntry<string, number>(
+            message.counters, '', 0,
+            10, 16,
+            (entryReader: ProtoReader) => entryReader.readString(),
+            (entryReader: ProtoReader) => entryReader.readInt32());
           break;
         case 58:
           message.profile = Profile.mergeFrom(reader.readSlice(), message.profile ?? new Profile());
@@ -357,35 +316,9 @@ export class Envelope implements ProtoMessage {
     return message;
   }
 
-  private static readCountersEntry(bytes: Uint8Array, message: Envelope): void {
-    const reader: ProtoReader = new ProtoReader(bytes);
-    let key: string = '';
-    let value: number = 0;
-    while (!reader.isAtEnd()) {
-      const tag: number = reader.readTag();
-      switch (tag) {
-        case 10:
-          key = reader.readString();
-          break;
-        case 16:
-          value = reader.readInt32();
-          break;
-        default:
-          reader.skipField(Math.floor(tag / 8), tag & 0x07);
-      }
-    }
-    ProtoContainers.setMapValue(message.counters, key, value);
-  }
-
   traverse(visitor: ProtoVisitor): void {
-    if (this.code !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(1, "code");
-      visitor.visitNumber(this.code, ProtoValueKind.INT32, fieldInfo);
-    }
-    if (this.message !== '') {
-      const fieldInfo: FieldInfo = new FieldInfo(2, "message");
-      visitor.visitString(this.message, fieldInfo);
-    }
+    ProtoJson.traverseNumberField(visitor, this.code !== 0, this.code, ProtoValueKind.INT32, 1, "code");
+    ProtoJson.traverseStringField(visitor, this.message !== '', this.message, 2, "message");
     if (this.status !== 0) {
       const fieldInfo: FieldInfo = new FieldInfo(3, "status");
       let name: string | undefined = undefined;
@@ -396,56 +329,22 @@ export class Envelope implements ProtoMessage {
       }
       visitor.visitEnum(this.status, name, fieldInfo);
     }
-    if (this.scores.length !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(4, "scores");
-      visitor.beginRepeated(fieldInfo);
-      for (let index: number = 0; index < this.scores.length; index++) {
-        visitor.visitNumber(this.scores[index], ProtoValueKind.INT32, fieldInfo);
-      }
-      visitor.endRepeated(fieldInfo);
-    }
-    if (this.tags.length !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(5, "tags");
-      visitor.beginRepeated(fieldInfo);
-      for (let index: number = 0; index < this.tags.length; index++) {
-        visitor.visitString(this.tags[index], fieldInfo);
-      }
-      visitor.endRepeated(fieldInfo);
-    }
-    if (this.counters.size !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(6, "counters");
-      visitor.beginMap(fieldInfo);
-      const keys: collections.Array<string> = ProtoContainers.mapKeys(this.counters);
-      for (let index: number = 0; index < keys.length; index++) {
-        const key: string = keys[index];
-        const value: number | undefined = ProtoContainers.mapValue(this.counters, key);
-        if (value !== undefined) {
-          visitor.mapKey(key);
-          visitor.visitNumber(value, ProtoValueKind.INT32, fieldInfo);
-        }
-      }
-      visitor.endMap(fieldInfo);
-    }
-    if (this.profile !== undefined) {
-      const fieldInfo: FieldInfo = new FieldInfo(7, "profile");
-      visitor.beginMessage(fieldInfo);
-      this.profile.traverse(visitor);
-      visitor.endMessage(fieldInfo);
-    }
-    if (this.payload.length !== 0) {
-      const fieldInfo: FieldInfo = new FieldInfo(8, "payload");
-      visitor.visitBytes(this.payload, fieldInfo);
-    }
-    if (this.resultCase === 9 && this.ok !== undefined) {
-      const fieldInfo: FieldInfo = new FieldInfo(9, "ok");
-      visitor.beginMessage(fieldInfo);
-      this.ok.traverse(visitor);
-      visitor.endMessage(fieldInfo);
-    }
-    if (this.resultCase === 10) {
-      const fieldInfo: FieldInfo = new FieldInfo(10, "failure");
-      visitor.visitString(this.failure, fieldInfo);
-    }
+    ProtoJson.traverseRepeated<number>(
+      visitor, this.scores, 4, "scores", undefined,
+      (value: number, fieldInfo: FieldInfo) => visitor.visitNumber(value, ProtoValueKind.INT32, fieldInfo));
+    ProtoJson.traverseRepeated<string>(
+      visitor, this.tags, 5, "tags", undefined,
+      (value: string, fieldInfo: FieldInfo) => visitor.visitString(value, fieldInfo));
+    ProtoJson.traverseMap<string, number>(
+      visitor, this.counters, 6, "counters", undefined,
+      (key: string, value: number, fieldInfo: FieldInfo) => {
+        visitor.mapKey(key);
+        visitor.visitNumber(value, ProtoValueKind.INT32, fieldInfo);
+      });
+    ProtoJson.traverseMessageField(visitor, this.profile !== undefined, this.profile, 7, "profile");
+    ProtoJson.traverseBytesField(visitor, this.payload.length !== 0, this.payload, 8, "payload");
+    ProtoJson.traverseMessageField(visitor, this.resultCase === 9 && this.ok !== undefined, this.ok, 9, "ok");
+    ProtoJson.traverseStringField(visitor, this.resultCase === 10, this.failure, 10, "failure");
   }
 
   toJson(): string {
@@ -468,27 +367,15 @@ export class Envelope implements ProtoMessage {
       const key: string = reader.readKey();
       switch (key) {
         case "code":
-          ProtoJson.requireUnseenField(seenFields, 1);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 1)) { break; }
           message.code = ProtoJson.readInt32(reader);
           break;
         case "message":
-          ProtoJson.requireUnseenField(seenFields, 2);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 2)) { break; }
           message.message = ProtoJson.readString(reader);
           break;
         case "status":
-          ProtoJson.requireUnseenField(seenFields, 3);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 3)) { break; }
           {
             let value: number = 0;
             let knownEnumValue: boolean = true;
@@ -514,82 +401,41 @@ export class Envelope implements ProtoMessage {
           }
           break;
         case "scores":
-          ProtoJson.requireUnseenField(seenFields, 4);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          reader.beginArray();
-          while (reader.hasMoreElements()) {
-            ProtoContainers.append(message.scores, ProtoJson.readInt32(reader));
-          }
-          reader.endArray();
+          if (ProtoJson.skipNullField(reader, seenFields, 4)) { break; }
+          ProtoJson.readRepeated<number>(reader,
+            (value: number) => ProtoContainers.append(message.scores, value),
+            () => ProtoJson.readInt32(reader));
           break;
         case "tags":
-          ProtoJson.requireUnseenField(seenFields, 5);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          reader.beginArray();
-          while (reader.hasMoreElements()) {
-            ProtoContainers.append(message.tags, ProtoJson.readString(reader));
-          }
-          reader.endArray();
+          if (ProtoJson.skipNullField(reader, seenFields, 5)) { break; }
+          ProtoJson.readRepeated<string>(reader,
+            (value: string) => ProtoContainers.append(message.tags, value),
+            () => ProtoJson.readString(reader));
           break;
         case "counters":
-          ProtoJson.requireUnseenField(seenFields, 6);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          reader.beginObject();
-          while (reader.hasMoreMembers()) {
-            const keyText: string = reader.readKey();
-            const key: string = keyText;
-            const value: number = ProtoJson.readInt32(reader);
-            ProtoContainers.setMapValue(message.counters, key, value);
-          }
-          reader.endObject();
+          if (ProtoJson.skipNullField(reader, seenFields, 6)) { break; }
+          ProtoJson.readMap<string, number>(reader,
+            (key: string, value: number) =>
+              ProtoContainers.setMapValue(message.counters, key, value),
+            (text: string) => text,
+            () => ProtoJson.readInt32(reader));
           break;
         case "profile":
-          ProtoJson.requireUnseenField(seenFields, 7);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 7)) { break; }
           message.profile = Profile.readJson(reader, ignoreUnknownFields);
           break;
         case "payload":
-          ProtoJson.requireUnseenField(seenFields, 8);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
+          if (ProtoJson.skipNullField(reader, seenFields, 8)) { break; }
           message.payload = ProtoJson.readBytes(reader);
           break;
         case "ok":
-          ProtoJson.requireUnseenField(seenFields, 9);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          if (oneofCases[0] !== 0) {
-            throw new Error('Multiple JSON fields set in oneof "result"');
-          }
-          oneofCases[0] = 9;
+          if (ProtoJson.skipNullField(reader, seenFields, 9)) { break; }
+          ProtoJson.requireOneof(oneofCases, 0, 9, "result");
           message.setOk(Profile.readJson(reader, ignoreUnknownFields));
           break;
         case "failure":
-          ProtoJson.requireUnseenField(seenFields, 10);
-          if (ProtoJson.isNull(reader)) {
-            reader.readNull();
-            break;
-          }
-          if (oneofCases[0] !== 0) {
-            throw new Error('Multiple JSON fields set in oneof "result"');
-          }
-          oneofCases[0] = 10;
+          if (ProtoJson.skipNullField(reader, seenFields, 10)) { break; }
+          ProtoJson.requireOneof(oneofCases, 0, 10, "result");
           message.setFailure(ProtoJson.readString(reader));
           break;
         default:
