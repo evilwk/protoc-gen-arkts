@@ -8,22 +8,19 @@ const scanning = (files) => (root) => (root === 'v2' ? files : []);
 
 test('parses plugin options and rejects unknown options', () => {
   assert.deepEqual(parseOptions('', noProtos), {
-    runtimeImport: 'protoc-gen-arkts-runtime',
+    json: false,
     outputPrefix: '',
     depPrefix: '',
     depFiles: new Set()
   });
-  assert.equal(parseOptions('runtime_import=../../ProtoWire', noProtos).runtimeImport, '../../ProtoWire');
   assert.throws(() => parseOptions('group_prefix=v2', noProtos), /unknown plugin option/);
-  assert.throws(() => parseOptions('runtime_import=', noProtos), /requires a non-empty value/);
+  assert.throws(() => parseOptions('runtime_import=proto_runtime', noProtos), /unknown plugin option/);
 });
 
-test('accepts a HarmonyOS module name as runtime import', () => {
-  assert.equal(parseOptions('runtime_import=proto_runtime', noProtos).runtimeImport, 'proto_runtime');
-});
-
-test('defaults the runtime import to the published ohpm package name', () => {
-  assert.equal(parseOptions('', noProtos).runtimeImport, 'protoc-gen-arkts-runtime');
+test('parses the opt-in json option strictly', () => {
+  assert.equal(parseOptions('json=true', noProtos).json, true);
+  assert.equal(parseOptions('json=false', noProtos).json, false);
+  assert.throws(() => parseOptions('json=1', noProtos), /must be "true" or "false"/);
 });
 
 test('collects dependency protos by scanning dep_root', () => {
@@ -58,7 +55,7 @@ test('rejects malformed prefix options', () => {
 
 test('rejects duplicate options and unusable scan results', () => {
   assert.throws(
-    () => parseOptions('runtime_import=proto_runtime,runtime_import=other', noProtos),
+    () => parseOptions('json=true,json=false', noProtos),
     /duplicate plugin option/
   );
   assert.throws(

@@ -21,6 +21,6 @@ mkdirSync(outputDir, { recursive: true });
 execFileSync('protoc', [
   '-I', join(entryDir, 'proto'),
   `--plugin=protoc-gen-arkts=${plugin}`,
-  `--arkts_out=${outputDir}`,
+  `--arkts_out=json=true:${outputDir}`,
   'demo.proto'
 ], { cwd: entryDir, stdio: 'inherit' });

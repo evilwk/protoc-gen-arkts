@@ -77,7 +77,7 @@ export class FieldCodecRenderer {
               reader.skipField(Math.floor(tag / 8), tag & 0x07);
           }
         }
-        setProtoMapValue(message.${field.name}, key, value);
+        ProtoContainers.setMapValue(message.${field.name}, key, value);
       }`;
   }
 
@@ -147,10 +147,10 @@ export class FieldCodecRenderer {
     const mapKey: ValueFieldModel = field.mapKey;
     const mapValue: ValueFieldModel = field.mapValue;
     return renderSource`
-      const ${field.name}Keys: collections.Array<${mapKey.arkType}> = getProtoMapKeys(this.${field.name});
+      const ${field.name}Keys: collections.Array<${mapKey.arkType}> = ProtoContainers.mapKeys(this.${field.name});
       for (let index: number = 0; index < ${field.name}Keys.length; index++) {
         const key: ${mapKey.arkType} = ${field.name}Keys[index];
-        const value: ${mapValue.arkType} | undefined = getProtoMapValue(this.${field.name}, key);
+        const value: ${mapValue.arkType} | undefined = ProtoContainers.mapValue(this.${field.name}, key);
         if (value !== undefined) {
           const entryWriter: ProtoWriter = new ProtoWriter();
           entryWriter.writeTag(1, ProtoWireType.${mapKey.wireType});
@@ -239,10 +239,10 @@ export class FieldCodecRenderer {
       return this.renderEnumAssignment(
         field,
         readExpression,
-        `appendProtoValue(message.${field.name}, value);`
+        `ProtoContainers.append(message.${field.name}, value);`
       );
     }
-    return `appendProtoValue(message.${field.name}, ${readExpression});`;
+    return `ProtoContainers.append(message.${field.name}, ${readExpression});`;
   }
 
   /**

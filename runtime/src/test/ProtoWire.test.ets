@@ -1,6 +1,8 @@
 import { collections } from '@kit.ArkTS';
 import { describe, expect, it } from '@ohos/hypium';
-import { ProtoReader, ProtoWireType, ProtoWriter } from '../main/ets/ProtoWire';
+import { ProtoReader } from '../main/ets/wire/ProtoReader';
+import { ProtoWireType } from '../main/ets/wire/ProtoWireType';
+import { ProtoWriter } from '../main/ets/wire/ProtoWriter';
 
 function didThrow(action: () => void): boolean {
   try {
@@ -265,6 +267,26 @@ export default function protoWireTest(): void {
       }
       expect(reader.readTag()).assertEqual(0x08);
       expect(reader.readInt32()).assertEqual(42);
+    });
+
+    it('skipsDeeplyNestedUnknownGroupsWithoutRecursion', 0, () => {
+      const depth: number = 4096;
+      const values: number[] = [];
+      for (let index: number = 0; index < depth; index++) {
+        values.push(0x0b);
+      }
+      for (let index: number = 0; index < depth; index++) {
+        values.push(0x0c);
+      }
+      values.push(0x10);
+      values.push(0x2a);
+
+      const reader: ProtoReader = new ProtoReader(collections.Uint8Array.from(values));
+      const tag: number = reader.readTag();
+      reader.skipField(Math.floor(tag / 8), tag & 0x07);
+      expect(reader.readTag()).assertEqual(0x10);
+      expect(reader.readUInt32()).assertEqual(42);
+      expect(reader.isAtEnd()).assertTrue();
     });
 
     it('encodesVarintAcrossEveryByteLengthBoundary', 0, () => {

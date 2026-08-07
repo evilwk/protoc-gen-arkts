@@ -18,12 +18,15 @@ export interface ScalarShape {
  */
 export interface FieldModelBase extends ScalarShape {
   readonly protoName: string;
+  readonly jsonName: string;
   readonly name: string;
   readonly number: number;
   readonly type: number;
   readonly typeName: string;
   readonly repeated: boolean;
-  /** 编码形态：是否按 packed 写出。由 proto 声明决定。 */
+  /**
+   * 编码形态：是否按 packed 写出。由 proto 声明决定。
+   */
   readonly packed: boolean;
   /**
    * 解码形态：类型是否允许 packed 编码。

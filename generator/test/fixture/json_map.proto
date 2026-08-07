@@ -1,0 +1,6 @@
+syntax = "proto3";
+package fixture.json;
+
+message JsonMapFixture {
+  map<int32, int32> values = 1;
+}

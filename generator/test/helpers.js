@@ -9,11 +9,11 @@ export const vectorDir = join(import.meta.dirname, 'fixture');
 export const groupFixtureDir = join(import.meta.dirname, 'fixture', 'groups');
 
 const LEGACY_PASS = [
-  `--arkts_out=runtime_import=proto_runtime,output_prefix=legacy,dep_root=v2,dep_prefix=v2:`,
+  `--arkts_out=output_prefix=legacy,dep_root=v2,dep_prefix=v2:`,
   ['common/shared.proto', 'common/backref.proto']
 ];
 const V2_PASS = [
-  `--arkts_out=runtime_import=proto_runtime,output_prefix=v2,dep_root=legacy,dep_prefix=legacy:`,
+  `--arkts_out=output_prefix=v2,dep_root=legacy,dep_prefix=legacy:`,
   ['gateway/envelope.proto']
 ];
 
@@ -21,7 +21,7 @@ export function generateFixture() {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-'));
   execFileSync('protoc', [
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=../ProtoWire:${outputDir}`,
+    `--arkts_out=${outputDir}`,
     'scalar_fixture.proto'
   ], { cwd: vectorDir });
   return readFileSync(join(outputDir, 'ScalarFixture.ets'), 'utf8');
@@ -31,7 +31,7 @@ export function generateComplex() {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-complex-'));
   const result = spawnSync('protoc', [
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=../../ProtoWire:${outputDir}`,
+    `--arkts_out=${outputDir}`,
     '-I.',
     'complex.proto',
     'shared.proto'
@@ -46,7 +46,7 @@ export function generateServices() {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-service-'));
   const result = spawnSync('protoc', [
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=../ProtoWire:${outputDir}`,
+    `--arkts_out=${outputDir}`,
     '-I.',
     'service_fixture.proto',
     'shared.proto'

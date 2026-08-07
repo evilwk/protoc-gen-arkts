@@ -13,6 +13,8 @@ import { ArkTSMessageRenderer } from './message-renderer.js';
 import { ArkTSServiceRenderer, decodableResponses } from './service-renderer.js';
 import { PLUGIN_VERSION } from '../version.js';
 
+const RUNTIME_MODULE: string = 'protoc-gen-arkts-runtime';
+
 /**
  * 持有单文件渲染上下文，负责 import 规划和顶层声明组装。
  */
@@ -36,7 +38,7 @@ export class ArkTSFileRenderer {
         declarations.push(renderEnum(symbol.arkName, symbol.enum));
       } else if (symbol.kind === 'message') {
         declarations.push(
-          new ArkTSMessageRenderer(symbol, this.file, this.model, this.imports).render()
+          new ArkTSMessageRenderer(symbol, this.file, this.model, this.imports, this.options).render()
         );
       }
     }
@@ -64,17 +66,18 @@ export class ArkTSFileRenderer {
   }
 
   private renderImports(): string {
-    // runtime_import 以 "." 开头时相对于输出根目录，否则按 HarmonyOS 模块名原样使用。
-    const runtimeImport: string = this.options.runtimeImport.startsWith('.')
-      ? relativeModule(this.currentOutput, this.options.runtimeImport)
-      : this.options.runtimeImport;
-
     // lang.ISendable 只被响应解码表用到，没有 service 时不引入。
     const arkTSImports: string = this.hasServiceRegistry() ? 'collections, lang' : 'collections';
+    const wireRuntimeItems: string = 'ProtoContainers, ProtoReader, ProtoWireType, ProtoWriter';
     const importLines: string[] = [
       `import { ${arkTSImports} } from '@kit.ArkTS';`,
-      `import { ProtoReader, ProtoWireType, ProtoWriter, appendProtoValue, getProtoMapKeys, getProtoMapValue, setProtoMapValue } from '${runtimeImport}';`
+      `import { ${wireRuntimeItems} } from '${RUNTIME_MODULE}';`
     ];
+    if (this.options.json) {
+      importLines.push(
+        `import { FieldInfo, JsonReader, ProtoJson, ProtoMessage, ProtoValueKind, ProtoVisitor } from '${RUNTIME_MODULE}';`
+      );
+    }
 
     const groupedImports: Map<string, Array<[string, string]>> = new Map();
     for (const [fullName, alias] of this.imports) {
@@ -108,9 +111,6 @@ export class ArkTSFileRenderer {
   }
 
   /**
-   * 收集当前文件引用的外部类型，并为名称冲突的类型生成稳定别名。
-   */
-  /**
    * 是否存在至少一个非空的响应解码表，决定是否引入 lang。
    */
   private hasServiceRegistry(): boolean {
@@ -119,6 +119,9 @@ export class ArkTSFileRenderer {
     );
   }
 
+  /**
+   * 收集当前文件引用的外部类型，并为名称冲突的类型生成稳定别名。
+   */
   private collectImports(): Map<string, string> {
     const referenced: Set<string> = new Set();
     for (const symbol of this.file.symbols) {

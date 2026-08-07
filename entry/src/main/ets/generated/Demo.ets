@@ -3,7 +3,8 @@
 // Plugin version: 0.5.0
 
 import { collections, lang } from '@kit.ArkTS';
-import { ProtoReader, ProtoWireType, ProtoWriter, appendProtoValue, getProtoMapKeys, getProtoMapValue, setProtoMapValue } from 'protoc-gen-arkts-runtime';
+import { ProtoContainers, ProtoReader, ProtoWireType, ProtoWriter } from 'protoc-gen-arkts-runtime';
+import { FieldInfo, JsonReader, ProtoJson, ProtoMessage, ProtoValueKind, ProtoVisitor } from 'protoc-gen-arkts-runtime';
 
 export enum Status {
   STATUS_UNKNOWN = 0,
@@ -12,7 +13,7 @@ export enum Status {
 }
 
 @Sendable
-export class Profile {
+export class Profile implements ProtoMessage {
   nickname: string = '';
   age: number = 0;
 
@@ -60,10 +61,67 @@ export class Profile {
     }
     return message;
   }
+
+  traverse(visitor: ProtoVisitor): void {
+    if (this.nickname !== '') {
+      const fieldInfo: FieldInfo = new FieldInfo(1, "nickname");
+      visitor.visitString(this.nickname, fieldInfo);
+    }
+    if (this.age !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(2, "age");
+      visitor.visitNumber(this.age, ProtoValueKind.INT32, fieldInfo);
+    }
+  }
+
+  toJson(): string {
+    return ProtoJson.write(this);
+  }
+
+  static fromJson(text: string, ignoreUnknownFields: boolean = false): Profile {
+    const reader: JsonReader = new JsonReader(text);
+    const message: Profile = Profile.readJson(reader, ignoreUnknownFields);
+    reader.requireEndOfInput();
+    return message;
+  }
+
+  static readJson(reader: JsonReader, ignoreUnknownFields: boolean): Profile {
+    const message: Profile = new Profile();
+    const seenFields: Set<number> = new Set<number>();
+    const oneofCases: number[] = [];
+    reader.beginObject();
+    while (reader.hasMoreMembers()) {
+      const key: string = reader.readKey();
+      switch (key) {
+        case "nickname":
+          ProtoJson.requireUnseenField(seenFields, 1);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.nickname = ProtoJson.readString(reader);
+          break;
+        case "age":
+          ProtoJson.requireUnseenField(seenFields, 2);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.age = ProtoJson.readInt32(reader);
+          break;
+        default:
+          if (!ignoreUnknownFields) {
+            throw new Error('Unknown JSON field: ' + key);
+          }
+          reader.skipValue();
+      }
+    }
+    reader.endObject();
+    return message;
+  }
 }
 
 @Sendable
-export class Envelope {
+export class Envelope implements ProtoMessage {
   code: number = 0;
   message: string = '';
   status: number = 0;
@@ -141,10 +199,10 @@ export class Envelope {
       writer.writeTag(5, ProtoWireType.LENGTH_DELIMITED);
       writer.writeString(this.tags[index]);
     }
-    const countersKeys: collections.Array<string> = getProtoMapKeys(this.counters);
+    const countersKeys: collections.Array<string> = ProtoContainers.mapKeys(this.counters);
     for (let index: number = 0; index < countersKeys.length; index++) {
       const key: string = countersKeys[index];
-      const value: number | undefined = getProtoMapValue(this.counters, key);
+      const value: number | undefined = ProtoContainers.mapValue(this.counters, key);
       if (value !== undefined) {
         const entryWriter: ProtoWriter = new ProtoWriter();
         entryWriter.writeTag(1, ProtoWireType.LENGTH_DELIMITED);
@@ -212,17 +270,17 @@ export class Envelope {
           }
           break;
         case 32:
-          appendProtoValue(message.scores, reader.readInt32());
+          ProtoContainers.append(message.scores, reader.readInt32());
           break;
         case 34: {
           const packedReader: ProtoReader = new ProtoReader(reader.readSlice());
           while (!packedReader.isAtEnd()) {
-            appendProtoValue(message.scores, packedReader.readInt32());
+            ProtoContainers.append(message.scores, packedReader.readInt32());
           }
           break;
         }
         case 42:
-          appendProtoValue(message.tags, reader.readString());
+          ProtoContainers.append(message.tags, reader.readString());
           break;
         case 50:
           Envelope.readCountersEntry(reader.readSlice(), message);
@@ -273,7 +331,233 @@ export class Envelope {
           reader.skipField(Math.floor(tag / 8), tag & 0x07);
       }
     }
-    setProtoMapValue(message.counters, key, value);
+    ProtoContainers.setMapValue(message.counters, key, value);
+  }
+
+  traverse(visitor: ProtoVisitor): void {
+    if (this.code !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(1, "code");
+      visitor.visitNumber(this.code, ProtoValueKind.INT32, fieldInfo);
+    }
+    if (this.message !== '') {
+      const fieldInfo: FieldInfo = new FieldInfo(2, "message");
+      visitor.visitString(this.message, fieldInfo);
+    }
+    if (this.status !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(3, "status");
+      let name: string | undefined = undefined;
+      switch (this.status) {
+        case 0: name = "STATUS_UNKNOWN"; break;
+        case 1: name = "STATUS_OK"; break;
+        case 2: name = "STATUS_ERROR"; break;
+      }
+      visitor.visitEnum(this.status, name, fieldInfo);
+    }
+    if (this.scores.length !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(4, "scores");
+      visitor.beginRepeated(fieldInfo);
+      for (let index: number = 0; index < this.scores.length; index++) {
+        visitor.visitNumber(this.scores[index], ProtoValueKind.INT32, fieldInfo);
+      }
+      visitor.endRepeated(fieldInfo);
+    }
+    if (this.tags.length !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(5, "tags");
+      visitor.beginRepeated(fieldInfo);
+      for (let index: number = 0; index < this.tags.length; index++) {
+        visitor.visitString(this.tags[index], fieldInfo);
+      }
+      visitor.endRepeated(fieldInfo);
+    }
+    if (this.counters.size !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(6, "counters");
+      visitor.beginMap(fieldInfo);
+      const keys: collections.Array<string> = ProtoContainers.mapKeys(this.counters);
+      for (let index: number = 0; index < keys.length; index++) {
+        const key: string = keys[index];
+        const value: number | undefined = ProtoContainers.mapValue(this.counters, key);
+        if (value !== undefined) {
+          visitor.mapKey(key);
+          visitor.visitNumber(value, ProtoValueKind.INT32, fieldInfo);
+        }
+      }
+      visitor.endMap(fieldInfo);
+    }
+    if (this.profile !== undefined) {
+      const fieldInfo: FieldInfo = new FieldInfo(7, "profile");
+      visitor.beginMessage(fieldInfo);
+      this.profile.traverse(visitor);
+      visitor.endMessage(fieldInfo);
+    }
+    if (this.payload.length !== 0) {
+      const fieldInfo: FieldInfo = new FieldInfo(8, "payload");
+      visitor.visitBytes(this.payload, fieldInfo);
+    }
+    if (this.resultCase === 9 && this.ok !== undefined) {
+      const fieldInfo: FieldInfo = new FieldInfo(9, "ok");
+      visitor.beginMessage(fieldInfo);
+      this.ok.traverse(visitor);
+      visitor.endMessage(fieldInfo);
+    }
+    if (this.resultCase === 10) {
+      const fieldInfo: FieldInfo = new FieldInfo(10, "failure");
+      visitor.visitString(this.failure, fieldInfo);
+    }
+  }
+
+  toJson(): string {
+    return ProtoJson.write(this);
+  }
+
+  static fromJson(text: string, ignoreUnknownFields: boolean = false): Envelope {
+    const reader: JsonReader = new JsonReader(text);
+    const message: Envelope = Envelope.readJson(reader, ignoreUnknownFields);
+    reader.requireEndOfInput();
+    return message;
+  }
+
+  static readJson(reader: JsonReader, ignoreUnknownFields: boolean): Envelope {
+    const message: Envelope = new Envelope();
+    const seenFields: Set<number> = new Set<number>();
+    const oneofCases: number[] = [0];
+    reader.beginObject();
+    while (reader.hasMoreMembers()) {
+      const key: string = reader.readKey();
+      switch (key) {
+        case "code":
+          ProtoJson.requireUnseenField(seenFields, 1);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.code = ProtoJson.readInt32(reader);
+          break;
+        case "message":
+          ProtoJson.requireUnseenField(seenFields, 2);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.message = ProtoJson.readString(reader);
+          break;
+        case "status":
+          ProtoJson.requireUnseenField(seenFields, 3);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          {
+            let value: number = 0;
+            let knownEnumValue: boolean = true;
+            if (ProtoJson.isString(reader)) {
+              const name: string = reader.readString();
+              switch (name) {
+                case "STATUS_UNKNOWN": value = 0; break;
+                case "STATUS_OK": value = 1; break;
+                case "STATUS_ERROR": value = 2; break;
+                default:
+                  if (ignoreUnknownFields) {
+                    knownEnumValue = false;
+                  } else {
+                    throw new Error('Unknown enum value: ' + name);
+                  }
+              }
+            } else {
+              value = ProtoJson.readInt32(reader);
+            }
+            if (knownEnumValue) {
+              message.status = value;
+            }
+          }
+          break;
+        case "scores":
+          ProtoJson.requireUnseenField(seenFields, 4);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          reader.beginArray();
+          while (reader.hasMoreElements()) {
+            ProtoContainers.append(message.scores, ProtoJson.readInt32(reader));
+          }
+          reader.endArray();
+          break;
+        case "tags":
+          ProtoJson.requireUnseenField(seenFields, 5);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          reader.beginArray();
+          while (reader.hasMoreElements()) {
+            ProtoContainers.append(message.tags, ProtoJson.readString(reader));
+          }
+          reader.endArray();
+          break;
+        case "counters":
+          ProtoJson.requireUnseenField(seenFields, 6);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          reader.beginObject();
+          while (reader.hasMoreMembers()) {
+            const keyText: string = reader.readKey();
+            const key: string = keyText;
+            const value: number = ProtoJson.readInt32(reader);
+            ProtoContainers.setMapValue(message.counters, key, value);
+          }
+          reader.endObject();
+          break;
+        case "profile":
+          ProtoJson.requireUnseenField(seenFields, 7);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.profile = Profile.readJson(reader, ignoreUnknownFields);
+          break;
+        case "payload":
+          ProtoJson.requireUnseenField(seenFields, 8);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          message.payload = ProtoJson.readBytes(reader);
+          break;
+        case "ok":
+          ProtoJson.requireUnseenField(seenFields, 9);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          if (oneofCases[0] !== 0) {
+            throw new Error('Multiple JSON fields set in oneof "result"');
+          }
+          oneofCases[0] = 9;
+          message.setOk(Profile.readJson(reader, ignoreUnknownFields));
+          break;
+        case "failure":
+          ProtoJson.requireUnseenField(seenFields, 10);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          if (oneofCases[0] !== 0) {
+            throw new Error('Multiple JSON fields set in oneof "result"');
+          }
+          oneofCases[0] = 10;
+          message.setFailure(ProtoJson.readString(reader));
+          break;
+        default:
+          if (!ignoreUnknownFields) {
+            throw new Error('Unknown JSON field: ' + key);
+          }
+          reader.skipValue();
+      }
+    }
+    reader.endObject();
+    return message;
   }
 }
 

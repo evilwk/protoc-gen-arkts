@@ -1,8 +1,6 @@
 #!/bin/sh
-# 拉取 protobuf 源码并编译 conformance_test_runner。只需跑一次。
-#
-# homebrew 的 protobuf 不带 runner，必须自己编。abseil 走 find_package，
-# 若本机没有请先 `brew install abseil`。
+# 拉取 protobuf 源码并编译 conformance_test_runner。
+# abseil 走 find_package，若本机没有请先 `brew install abseil`。
 set -e
 # 所有相对路径都以 conformance/ 为基准。
 cd "$(dirname "$0")/.."

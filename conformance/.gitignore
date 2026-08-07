@@ -1,6 +1,7 @@
 # 全部由 setup.sh / run.sh 复现，不入库。
 .third_party/
 generated-ets/
+generated-json-ets/
 native/
 build/
 node_modules

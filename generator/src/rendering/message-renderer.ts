@@ -2,10 +2,13 @@ import type { IOneofDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { DescriptorModel } from '../model/descriptor-model.js';
 import type { FieldModel, MapFieldModel } from '../model/field-model.js';
 import type { FileModel, MessageTypeSymbol } from '../model/symbols.js';
+import type { PluginOptions } from '../model/plugin.js';
 import { indent, requireArkMemberName, toUpperCamel } from '../naming.js';
 import { renderSource } from '../source-template.js';
 import { FieldCodecRenderer } from './field-codec-renderer.js';
 import { FieldModelResolver } from './field-model-resolver.js';
+import { JsonCodecRenderer } from './json-codec-renderer.js';
+import { isSpecialWktMessage, WktJsonCodecRenderer } from './wkt-json-codec-renderer.js';
 
 /**
  * 渲染一个 message 的字段、oneof API 与编解码方法。
@@ -14,18 +17,25 @@ export class ArkTSMessageRenderer {
   private readonly fields: FieldModel[];
   private readonly oneofs: IOneofDescriptorProto[];
   private readonly codec: FieldCodecRenderer;
+  private readonly jsonCodec: JsonCodecRenderer;
+  private readonly json: boolean;
 
   public constructor(
     private readonly symbol: MessageTypeSymbol,
     file: FileModel,
     model: DescriptorModel,
-    imports: ReadonlyMap<string, string>
+    imports: ReadonlyMap<string, string>,
+    options: PluginOptions
   ) {
     this.oneofs = symbol.message.oneofDecl ?? [];
     const resolver: FieldModelResolver = new FieldModelResolver(file, model, imports);
     this.fields = (symbol.message.field ?? []).map((field): FieldModel => resolver.resolve(field, symbol));
     this.requireUniqueMemberNames(file);
     this.codec = new FieldCodecRenderer(symbol.arkName, this.oneofs);
+    this.jsonCodec = isSpecialWktMessage(symbol.fullName)
+      ? new WktJsonCodecRenderer(symbol.fullName, symbol.arkName, this.oneofs, this.fields)
+      : new JsonCodecRenderer(symbol.arkName, this.oneofs);
+    this.json = options.json;
   }
 
   public render(): string {
@@ -105,14 +115,26 @@ export class ArkTSMessageRenderer {
     if (mapReaders.length > 0) {
       methodParts.push(indent(mapReaders));
     }
+    if (this.json) {
+      methodParts.push(
+        indent(renderSource`
+          traverse(visitor: ProtoVisitor): void {
+            ${this.jsonCodec.renderTraversal(this.fields)}
+          }`),
+        indent(this.jsonCodec.renderToJson()),
+        indent(this.jsonCodec.renderFromJson()),
+        indent(this.jsonCodec.renderReadJson(this.fields))
+      );
+    }
 
-    return renderSource`
+    const messageSource: string = renderSource`
       @Sendable
-      export class ${messageName} {
+      export class ${messageName}${this.json ? ' implements ProtoMessage' : ''} {
       ${declarations.join('\n')}
 
       ${methodParts.join('\n\n')}
       }`;
+    return messageSource;
   }
 
   private renderOneofMethods(oneofName: string, fields: FieldModel[]): string {

@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 
 const RUNTIME_RULES = [
   // 运行时入口：collections/util 全部落到原生实现。
-  [/^import \{ collections, util \} from '@kit\.ArkTS';\n/m, ''],
+  [/^import \{ collections(?:, util)? \} from '@kit\.ArkTS';\n/m, ''],
   // const enum 不属于 TS 的可擦除语法，Node 的类型剥离拒绝它；退化为普通 enum。
   [/export const enum /g, 'export enum '],
   // ArkTS 的 encodeInto 返回新数组，语义等于原生 encode；

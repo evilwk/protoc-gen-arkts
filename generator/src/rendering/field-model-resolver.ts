@@ -47,6 +47,7 @@ interface ResolveValueParams {
   readonly rawField: IFieldDescriptorProto;
   readonly context: string;
   readonly protoName: string;
+  readonly jsonName: string;
   readonly name: string;
   readonly number: number;
   readonly type: number;
@@ -64,6 +65,7 @@ interface ResolveMapParams {
   readonly owner: MessageTypeSymbol;
   readonly entrySymbol: MapTypeSymbol;
   readonly protoName: string;
+  readonly jsonName: string;
   readonly name: string;
   readonly number: number;
   readonly type: number;
@@ -91,7 +93,8 @@ export class FieldModelResolver {
     );
 
     const context: string = `${this.file.fileName}: ${owner.fullName}.${protoName}`;
-    const name: string = toArkMemberName((rawField.jsonName as string | undefined) ?? protoName);
+    const jsonName: string = (rawField.jsonName as string | undefined) ?? protoName;
+    const name: string = toArkMemberName(jsonName);
     const number: number = rawField.number ?? 0;
 
     if (!Number.isInteger(number) || number < 1 || number > 0x1fffffff) {
@@ -127,6 +130,7 @@ export class FieldModelResolver {
         owner,
         entrySymbol: resolvedSymbol,
         protoName,
+        jsonName,
         name,
         number,
         type,
@@ -143,6 +147,7 @@ export class FieldModelResolver {
       rawField,
       context,
       protoName,
+      jsonName,
       name,
       number,
       type,
@@ -158,7 +163,7 @@ export class FieldModelResolver {
    */
   private resolveValue(params: ResolveValueParams): ValueFieldModel {
     const {
-      rawField, context, protoName, name, number, type, typeName,
+      rawField, context, protoName, jsonName, name, number, type, typeName,
       resolvedSymbol, repeated, oneofIndex
     } = params;
 
@@ -176,6 +181,7 @@ export class FieldModelResolver {
 
     const fieldBase: FieldModelBase = {
       protoName,
+      jsonName,
       name,
       number,
       type,
@@ -195,7 +201,7 @@ export class FieldModelResolver {
   }
 
   private resolveMap(params: ResolveMapParams): MapFieldModel {
-    const { owner, entrySymbol, protoName, name, number, type, typeName } = params;
+    const { owner, entrySymbol, protoName, jsonName, name, number, type, typeName } = params;
     const context: string = `${this.file.fileName}: ${owner.fullName}.${protoName}`;
 
     // --- 校验合成 entry message 的结构 ---
@@ -227,6 +233,7 @@ export class FieldModelResolver {
     return {
       kind: 'map',
       protoName,
+      jsonName,
       name,
       number,
       type,
@@ -265,6 +272,7 @@ export class FieldModelResolver {
     // map 分量不参与 repeated / packed 形态，直接沿用标量形态字段。
     const fieldBase: FieldModelBase = {
       protoName: path,
+      jsonName: path,
       name: path,
       number: rawField.number ?? 0,
       type,

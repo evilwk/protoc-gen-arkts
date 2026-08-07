@@ -16,9 +16,9 @@ export interface GeneratedFile {
 
 export interface PluginOptions {
   /**
-   * 以 "." 开头视为相对输出根的路径，否则视为 HarmonyOS 模块名。
+   * 是否生成 proto3 JSON 编解码 API。默认关闭，避免未使用方承担代码与 runtime 成本。
    */
-  readonly runtimeImport: string;
+  readonly json: boolean;
 
   /**
    * 本次生成文件的输出前缀；为空时直接落在输出根。

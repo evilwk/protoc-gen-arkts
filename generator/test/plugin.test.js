@@ -50,7 +50,10 @@ test('resolves cross-group imports in both directions', () => {
 test('imports the wire runtime by HarmonyOS module name', () => {
   const outputDir = generateGroups();
   const shared = readFileSync(join(outputDir, 'legacy/common/Shared.ets'), 'utf8');
-  assert.match(shared, /import \{ ProtoReader,[^}]*\} from 'proto_runtime';/);
+  assert.match(
+    shared,
+    /import \{ ProtoContainers, ProtoReader, ProtoWireType, ProtoWriter \} from 'protoc-gen-arkts-runtime';/
+  );
 });
 
 test('generates identical output regardless of group order', () => {
@@ -117,7 +120,7 @@ test('imports lang only when a registry is generated', () => {
 test('decodes both packed and unpacked input for an explicitly unpacked field', () => {
   const complex = readFileSync(join(generateComplex(), 'Complex.ets'), 'utf8');
   // 字段 10：非 packed tag = 80，packed tag = 82。
-  assert.match(complex, /case 80:\n\s+appendProtoValue\(message\.unpackedValues, reader\.readInt32\(\)\);/);
+  assert.match(complex, /case 80:\n\s+ProtoContainers\.append\(message\.unpackedValues, reader\.readInt32\(\)\);/);
   assert.match(complex, /case 82: \{/);
   // 编码侧仍是一元素一 tag，不得退化成 packed 块。
   assert.doesNotMatch(complex, /packedWriter[\s\S]{0,200}this\.unpackedValues/);
@@ -128,7 +131,7 @@ test('rejects an imported dependency that is neither generated nor declared', ()
   const result = spawnSync('protoc', [
     '-I', '.',
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=proto_runtime,output_prefix=v2:${outputDir}`,
+    `--arkts_out=output_prefix=v2:${outputDir}`,
     'wkt_probe.proto'
   ], { cwd: vectorDir, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
@@ -141,9 +144,147 @@ test('rejects an unresolved dependency even without any prefix option', () => {
   const result = spawnSync('protoc', [
     '-I', '.',
     `--plugin=protoc-gen-arkts=${plugin}`,
-    `--arkts_out=runtime_import=proto_runtime:${outputDir}`,
+    `--arkts_out=${outputDir}`,
     'wkt_probe.proto'
   ], { cwd: vectorDir, encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /is imported but not generated/);
+});
+
+test('generates registry-backed Any JSON methods', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-wkt-json-'));
+  execFileSync('protoc', [
+    '-I', '.',
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'any_probe.proto',
+    'google/protobuf/any.proto'
+  ], { cwd: vectorDir });
+  const any = readFileSync(join(outputDir, 'google/protobuf/Any.ets'), 'utf8');
+  assert.match(any, /return ProtoJson\.writeAny\(this\.typeUrl, this\.value\);/);
+  assert.match(any, /const value = ProtoJson\.readAny\(reader, ignoreUnknownFields\);/);
+});
+
+test('generates canonical JSON methods for Timestamp', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-timestamp-json-'));
+  execFileSync('protoc', [
+    '-I', '.',
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'wkt_probe.proto',
+    'google/protobuf/timestamp.proto'
+  ], { cwd: vectorDir });
+  const timestamp = readFileSync(join(outputDir, 'google/protobuf/Timestamp.ets'), 'utf8');
+  const probe = readFileSync(join(outputDir, 'WktProbe.ets'), 'utf8');
+  assert.match(timestamp, /return ProtoJson\.writeTimestamp\(this\.seconds, this\.nanos\);/);
+  assert.match(timestamp, /const value = ProtoJson\.readTimestamp\(reader\);/);
+  // WKT 的 toJson() 可能返回字符串，父 message 只能整体嵌入而不能流式展开。
+  assert.match(probe, /visitor\.visitMessage\(this\.createdAt, fieldInfo\);/);
+});
+
+test('generates canonical JSON methods for Struct, Value, and ListValue', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-struct-json-'));
+  execFileSync('protoc', [
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'google/protobuf/struct.proto'
+  ]);
+  const generated = readFileSync(join(outputDir, 'google/protobuf/Struct.ets'), 'utf8');
+  assert.match(generated, /export class Struct[\s\S]*return ProtoJson\.writeRawObject\(keys, jsonValues\);/);
+  assert.match(generated, /export class Value[\s\S]*ProtoJson\.isObject\(reader\)/);
+  assert.match(generated, /export class ListValue[\s\S]*return ProtoJson\.writeRawArray\(jsonValues\);/);
+  assert.match(generated, /visitor\.visitNull\(fieldInfo\);/);
+});
+
+test('uses ordinary JSON mapping for google.protobuf object-shaped types', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-type-json-'));
+  execFileSync('protoc', [
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'google/protobuf/type.proto',
+    'google/protobuf/any.proto',
+    'google/protobuf/source_context.proto'
+  ]);
+  const generated = readFileSync(join(outputDir, 'google/protobuf/Type.ets'), 'utf8');
+  assert.match(generated, /export class Type implements ProtoMessage/);
+  assert.match(generated, /return ProtoJson\.write\(this\);/);
+});
+
+test('keeps ordinary generation available when json is enabled', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-json-'));
+  execFileSync('protoc', [
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'scalar_fixture.proto'
+  ], { cwd: vectorDir });
+  const generated = readFileSync(join(outputDir, 'ScalarFixture.ets'), 'utf8');
+  assert.match(generated, /export class ScalarFixture implements ProtoMessage/);
+  assert.match(generated, /traverse\(visitor: ProtoVisitor\): void/);
+  assert.match(generated, /toJson\(\): string/);
+  assert.match(generated, /static fromJson\(text: string, ignoreUnknownFields: boolean = false\): ScalarFixture/);
+  assert.match(
+    generated,
+    /import \{ FieldInfo, JsonReader, ProtoJson, ProtoMessage, ProtoValueKind, ProtoVisitor \} from 'protoc-gen-arkts-runtime';/
+  );
+  assert.doesNotMatch(
+    generated,
+    /import \{[^}]*\b(?:readInt32|readInt64|encodeBase64|decodeBase64)\b[^}]*\}/
+  );
+  // 字段元数据是编译期常量，必须提为 static 而不是每次 traverse 都新建。
+  // protoName 在前，命名不同的字段必须分别传入。
+  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(1, "int32_value", "int32Value"\);/);
+  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(\d+, "bool_value", "boolValue"\);/);
+});
+
+test('streams ordinary submessages into the parent JSON writer', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-nested-json-'));
+  execFileSync('protoc', [
+    '-I', vectorDir,
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'complex.proto',
+    'shared.proto'
+  ], { cwd: vectorDir });
+  const generated = readFileSync(join(outputDir, 'Complex.ets'), 'utf8');
+  // 普通子 message 直接写入父 writer，避免为每层嵌套各自建串再拼接。
+  assert.match(
+    generated,
+    /visitor\.beginMessage\(fieldInfo\);\n\s*this\.profile\.traverse\(visitor\);\n\s*visitor\.endMessage\(fieldInfo\);/
+  );
+  assert.doesNotMatch(generated, /visitor\.visitMessage\(this\.profile, /);
+  // 单词字段两种命名一致，省略 jsonName 交给 FieldInfo 构造函数回填。
+  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(1, "values"\);/);
+  assert.match(generated, /const fieldInfo: FieldInfo = new FieldInfo\(10, "unpacked_values", "unpackedValues"\);/);
+});
+
+test('converts non-string map keys to JSON object names', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-map-json-'));
+  execFileSync('protoc', [
+    '-I', vectorDir,
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'json_map.proto'
+  ], { cwd: vectorDir });
+  const generated = readFileSync(join(outputDir, 'JsonMap.ets'), 'utf8');
+  assert.match(generated, /visitor\.mapKey\(`\$\{key\}`\);/);
+});
+
+test('keeps JSON APIs and imports out of default generation', () => {
+  const generated = generateFixture();
+  assert.doesNotMatch(generated, /traverse\(visitor: ProtoVisitor\)|toJson\(\)|fromJson\(/);
+  assert.doesNotMatch(generated, /FieldInfo|JsonReader|JsonWriter|ProtoJson|ProtoVisitor/);
+});
+
+test('initializes generated oneof JSON state before conflict checks', () => {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-oneof-json-'));
+  execFileSync('protoc', [
+    '-I', vectorDir,
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=json=true:${outputDir}`,
+    'complex.proto',
+    'shared.proto'
+  ], { cwd: vectorDir });
+  const generated = readFileSync(join(outputDir, 'Complex.ets'), 'utf8');
+  assert.match(generated, /const oneofCases: number\[\] = \[0\];/);
+  assert.match(generated, /if \(oneofCases\[0\] !== 0\)/);
 });

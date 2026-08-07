@@ -2,7 +2,7 @@ import type { PluginOptions } from './model/plugin.js';
 import { scanProtoRoot, type ProtoScanner } from './proto-scanner.js';
 
 const KNOWN_OPTIONS = new Set([
-  'runtime_import',
+  'json',
   'output_prefix',
   'dep_root',
   'dep_prefix'
@@ -18,11 +18,10 @@ export function parseOptions(
   parameter: string,
   scan: ProtoScanner = scanProtoRoot
 ): PluginOptions {
-  // runtime 以 ohpm 包形式发布，默认按包名导入；vendored 源码需显式传相对路径。
-  let runtimeImport: string = 'protoc-gen-arkts-runtime';
   let outputPrefix: string = '';
   let depRoot: string = '';
   let depPrefix: string | undefined;
+  let json: boolean = false;
 
   const seenOptions: Set<string> = new Set();
   for (const item of parameter.length === 0 ? [] : parameter.split(',')) {
@@ -45,9 +44,8 @@ export function parseOptions(
     seenOptions.add(name);
 
     switch (name) {
-      case 'runtime_import':
-        // 以 "." 开头表示相对输出根的路径，否则视为 HarmonyOS 模块名。
-        runtimeImport = value;
+      case 'json':
+        json = requireBoolean(name, value);
         break;
       case 'output_prefix':
         outputPrefix = requirePrefix(name, value);
@@ -74,11 +72,21 @@ export function parseOptions(
     : new Set(scan(depRoot).map((file): string => requireProtoPath('dep_root', file)));
 
   return {
-    runtimeImport,
+    json,
     outputPrefix,
     depPrefix: resolvedDepPrefix,
     depFiles
   };
+}
+
+function requireBoolean(name: string, value: string): boolean {
+  if (value === 'true') {
+    return true;
+  }
+  if (value === 'false') {
+    return false;
+  }
+  throw new Error(`plugin option "${name}" must be "true" or "false"`);
 }
 
 function requirePrefix(name: string, value: string): string {

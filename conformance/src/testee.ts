@@ -5,10 +5,49 @@
 import { readSync, writeSync } from 'node:fs';
 import { ConformanceRequest, ConformanceResponse, TestCategory, WireFormat } from '../native/generated/Conformance';
 import { TestAllTypesProto3 } from '../native/generated/google/protobuf/TestMessagesProto3';
+import { ProtoJson } from '../native/runtime/Index';
+import { Any } from '../native/generated/google/protobuf/Any';
+import { Duration } from '../native/generated/google/protobuf/Duration';
+import { Empty } from '../native/generated/google/protobuf/Empty';
+import { FieldMask } from '../native/generated/google/protobuf/FieldMask';
+import { ListValue, Struct, Value } from '../native/generated/google/protobuf/Struct';
+import { Timestamp } from '../native/generated/google/protobuf/Timestamp';
+import {
+  BoolValue,
+  BytesValue,
+  DoubleValue,
+  FloatValue,
+  Int32Value,
+  Int64Value,
+  StringValue,
+  UInt32Value,
+  UInt64Value
+} from '../native/generated/google/protobuf/Wrappers';
 
 const PROTO3_MESSAGE = 'protobuf_test_messages.proto3.TestAllTypesProto3';
 
-/** 读满 length 字节；返回 null 表示 runner 已关闭 stdin，正常收尾。 */
+ProtoJson.registerAnyType(PROTO3_MESSAGE, TestAllTypesProto3.decode, TestAllTypesProto3.fromJson);
+ProtoJson.registerAnyType('google.protobuf.Empty', Empty.decode, Empty.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Any', Any.decode, Any.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Duration', Duration.decode, Duration.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.FieldMask', FieldMask.decode, FieldMask.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Struct', Struct.decode, Struct.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Value', Value.decode, Value.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.ListValue', ListValue.decode, ListValue.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Timestamp', Timestamp.decode, Timestamp.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.DoubleValue', DoubleValue.decode, DoubleValue.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.FloatValue', FloatValue.decode, FloatValue.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Int64Value', Int64Value.decode, Int64Value.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.UInt64Value', UInt64Value.decode, UInt64Value.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.Int32Value', Int32Value.decode, Int32Value.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.UInt32Value', UInt32Value.decode, UInt32Value.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.BoolValue', BoolValue.decode, BoolValue.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.StringValue', StringValue.decode, StringValue.fromJson);
+ProtoJson.registerAnyCustomType('google.protobuf.BytesValue', BytesValue.decode, BytesValue.fromJson);
+
+/**
+ * 读满 length 字节；返回 null 表示 runner 已关闭 stdin，正常收尾。
+ */
 function readExactly(length: number): Buffer | null {
   const buffer = Buffer.alloc(length);
   let filled = 0;
@@ -38,33 +77,41 @@ function writeExactly(payload: Uint8Array): void {
 /**
  * 处理单个请求。
  *
- * 射程：proto3 binary wire。其余格式（JSON / text / JSPB）和 proto2、editions 的
- * 消息类型一律回 skipped —— 这是 conformance 协议为"实现不覆盖该特性"预留的答案，
- * 与 failure 区分统计。
+ * 支持 proto3 binary wire 与 JSON。text / JSPB 以及 proto2、editions 的消息类型
+ * 回 skipped，这是 conformance 协议为“实现不覆盖该特性”预留的答案。
  */
 function handle(request: ConformanceRequest): ConformanceResponse {
   const response = new ConformanceResponse();
 
-  if (request.testCategory !== TestCategory.BINARY_TEST) {
+  const jsonCategory: boolean = request.testCategory === TestCategory.JSON_TEST ||
+    request.testCategory === TestCategory.JSON_IGNORE_UNKNOWN_PARSING_TEST;
+  if (request.testCategory !== TestCategory.BINARY_TEST && !jsonCategory) {
     response.setSkipped(`unsupported test category: ${request.testCategory}`);
     return response;
   }
-  if (!request.hasProtobufPayload()) {
-    response.setSkipped('only protobuf payloads are supported');
+  if (!request.hasProtobufPayload() && !request.hasJsonPayload()) {
+    response.setSkipped('only protobuf and JSON payloads are supported');
     return response;
   }
   if (request.messageType !== PROTO3_MESSAGE) {
     response.setSkipped(`unsupported message type: ${request.messageType}`);
     return response;
   }
-  if (request.requestedOutputFormat !== WireFormat.PROTOBUF) {
+  if (request.requestedOutputFormat !== WireFormat.PROTOBUF &&
+    request.requestedOutputFormat !== WireFormat.JSON
+  ) {
     response.setSkipped(`unsupported output format: ${request.requestedOutputFormat}`);
     return response;
   }
 
   let message: TestAllTypesProto3;
   try {
-    message = TestAllTypesProto3.decode(request.getProtobufPayload());
+    message = request.hasProtobufPayload()
+      ? TestAllTypesProto3.decode(request.getProtobufPayload())
+      : TestAllTypesProto3.fromJson(
+        request.getJsonPayload(),
+        request.testCategory === TestCategory.JSON_IGNORE_UNKNOWN_PARSING_TEST
+      );
   } catch (error) {
     // 解析失败是被测能力的一部分：runner 对畸形输入就期望这个答案。
     response.setParseError(String((error as Error).message ?? error));
@@ -72,7 +119,11 @@ function handle(request: ConformanceRequest): ConformanceResponse {
   }
 
   try {
-    response.setProtobufPayload(message.encode());
+    if (request.requestedOutputFormat === WireFormat.JSON) {
+      response.setJsonPayload(message.toJson());
+    } else {
+      response.setProtobufPayload(message.encode());
+    }
   } catch (error) {
     response.setSerializeError(String((error as Error).message ?? error));
   }
@@ -88,8 +139,9 @@ const tallyEnabled = process.env.ARKTS_CONFORMANCE_TALLY === '1';
 
 function record(response: ConformanceResponse): void {
   if (!tallyEnabled) return;
+  const skipped: string = response.hasSkipped() ? response.getSkipped() : '';
   const reason = response.hasSkipped()
-    ? response.getSkipped().replace(/: .*$/, '')
+    ? skipped.startsWith('unsupported message type:') ? skipped : skipped.replace(/: .*$/, '')
     : response.hasParseError() ? 'parse_error' : 'handled';
   tally.set(reason, (tally.get(reason) ?? 0) + 1);
 }

@@ -1,0 +1,8 @@
+syntax = "proto3";
+package fixture.wkt;
+
+import "google/protobuf/any.proto";
+
+message AnyProbe {
+  google.protobuf.Any payload = 1;
+}
