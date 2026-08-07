@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package fixture.optional;
+
+message OptionalFixture {
+  message Child {
+    int32 id = 1;
+  }
+
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_READY = 1;
+  }
+
+  optional int32 count = 1;
+  optional string label = 2;
+  optional bytes payload = 3;
+  optional State state = 4;
+  optional Child child = 5;
+  int32 implicit_count = 6;
+
+  oneof choice {
+    string name = 7;
+    int32 code = 8;
+  }
+}

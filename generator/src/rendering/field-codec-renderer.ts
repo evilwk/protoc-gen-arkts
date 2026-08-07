@@ -5,7 +5,7 @@ import type {
   FieldModel,
   MapFieldModel,
   MessageFieldModel,
-  ValueFieldModel
+  ValueFieldModel,
 } from '../model/field-model.js';
 import { requireArkMemberName, toUpperCamel } from '../naming.js';
 import { renderSource } from '../source-template.js';
@@ -17,9 +17,8 @@ import { wireTypeNumber } from './scalar-shapes.js';
 export class FieldCodecRenderer {
   public constructor(
     private readonly ownerName: string,
-    private readonly oneofs: IOneofDescriptorProto[]
-  ) {
-  }
+    private readonly oneofs: IOneofDescriptorProto[],
+  ) {}
 
   public renderEncoder(field: FieldModel): string {
     if (field.kind === 'map') {
@@ -27,6 +26,7 @@ export class FieldCodecRenderer {
     }
 
     if (field.repeated) {
+      // prettier-ignore
       return field.packed
         ? this.renderPackedRepeatedEncoder(field)
         : this.renderUnpackedRepeatedEncoder(field);
@@ -54,6 +54,7 @@ export class FieldCodecRenderer {
     const keyRead: string = this.renderReadValue('reader', mapKey);
     const valueRead: string = this.renderReadValue('reader', mapValue);
 
+    // prettier-ignore
     const valueDefault: string = mapValue.kind === 'message'
       ? `new ${mapValue.arkType}()`
       : mapValue.defaultValue;
@@ -85,9 +86,10 @@ export class FieldCodecRenderer {
    * 非 repeated 字段：仅在值与默认值不同（或 oneof 命中）时写出 tag + 值。
    */
   private renderSingularEncoder(field: ValueFieldModel): string {
+    // prettier-ignore
     const oneofName: string | undefined = field.oneofIndex === undefined
-      ? undefined
-      : requireArkMemberName(this.oneofs[field.oneofIndex]?.name, 'oneof name');
+        ? undefined
+        : requireArkMemberName(this.oneofs[field.oneofIndex]?.name, 'oneof name');
 
     const access: string = `this.${field.name}`;
     let condition: string;
@@ -102,6 +104,7 @@ export class FieldCodecRenderer {
     }
 
     const valueWrite: string = this.renderWriteValue('writer', field, access);
+    // prettier-ignore
     const messageGuard: string = field.kind === 'message' && oneofName !== undefined
       ? ` && ${access} !== undefined`
       : '';
@@ -191,6 +194,7 @@ export class FieldCodecRenderer {
     if (field.repeated) {
       assignment = this.renderRepeatedAssignment(field, readExpression);
     } else if (field.oneofIndex !== undefined) {
+      // prettier-ignore
       const oneofName: string = requireArkMemberName(
         this.oneofs[field.oneofIndex]?.name,
         'oneof name'
@@ -236,6 +240,7 @@ export class FieldCodecRenderer {
 
   private renderRepeatedAssignment(field: ValueFieldModel, readExpression: string): string {
     if (field.kind === 'enum') {
+      // prettier-ignore
       return this.renderEnumAssignment(
         field,
         readExpression,
@@ -248,11 +253,7 @@ export class FieldCodecRenderer {
   /**
    * enum 字段：只接受 descriptor 声明过的取值，未知值按 proto3 规则丢弃。
    */
-  private renderEnumAssignment(
-    field: EnumFieldModel,
-    readExpression: string,
-    assignment: string
-  ): string {
+  private renderEnumAssignment(field: EnumFieldModel, readExpression: string, assignment: string): string {
     const cases: string = field.symbol.enumValues.map((value): string => `case ${value}:`).join('\n');
     return renderSource`
       {

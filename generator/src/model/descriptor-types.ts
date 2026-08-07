@@ -30,6 +30,7 @@ const TYPE_SINT64 = 18;
  *
  * 用名称而非编号建键，使形态表能被编译器检查完整性，也让编号止步于本模块。
  */
+// prettier-ignore
 export type ScalarTypeName =
   | 'double' | 'float' | 'int64' | 'uint64' | 'int32'
   | 'fixed64' | 'fixed32' | 'bool' | 'string' | 'bytes'
@@ -50,7 +51,7 @@ const SCALAR_TYPE_NAMES: Readonly<Record<number, ScalarTypeName>> = {
   [TYPE_SFIXED32]: 'sfixed32',
   [TYPE_SFIXED64]: 'sfixed64',
   [TYPE_SINT32]: 'sint32',
-  [TYPE_SINT64]: 'sint64'
+  [TYPE_SINT64]: 'sint64',
 };
 
 /**
@@ -73,7 +74,7 @@ const MAP_KEY_TYPES: ReadonlySet<number> = new Set([
   TYPE_SFIXED32,
   TYPE_SFIXED64,
   TYPE_BOOL,
-  TYPE_STRING
+  TYPE_STRING,
 ]);
 
 /**
@@ -108,8 +109,7 @@ export function isBytesType(type: number): boolean {
  * 判断 protobuf 字段类型能否使用 packed repeated 编码。
  */
 export function isPackable(type: number): boolean {
-  return type !== TYPE_STRING && type !== TYPE_BYTES &&
-    type !== TYPE_MESSAGE && type !== TYPE_GROUP;
+  return type !== TYPE_STRING && type !== TYPE_BYTES && type !== TYPE_MESSAGE && type !== TYPE_GROUP;
 }
 
 /**

@@ -27,6 +27,16 @@ export function generateFixture() {
   return readFileSync(join(outputDir, 'ScalarFixture.ets'), 'utf8');
 }
 
+export function generateOptional(json = false) {
+  const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-optional-'));
+  execFileSync('protoc', [
+    `--plugin=protoc-gen-arkts=${plugin}`,
+    `--arkts_out=${json ? 'json=true:' : ''}${outputDir}`,
+    'optional.proto'
+  ], { cwd: vectorDir });
+  return readFileSync(join(outputDir, 'Optional.ets'), 'utf8');
+}
+
 export function generateComplex() {
   const outputDir = mkdtempSync(join(tmpdir(), 'protoc-gen-arkts-complex-'));
   const result = spawnSync('protoc', [

@@ -20,11 +20,11 @@ echo "==> 构建生成器"
 echo "==> 生成 ArkTS"
 rm -rf generated-ets && mkdir -p generated-ets
 rm -rf generated-json-ets && mkdir -p generated-json-ets
-set -- conformance.proto google/protobuf/test_messages_proto3.proto
+set -- conformance.proto google/protobuf/test_messages_proto3.proto optional.proto
 for w in $WKT; do set -- "$@" "google/protobuf/$w.proto"; done
 protoc \
   --plugin=protoc-gen-arkts=../generator/bin/protoc-gen-arkts.js \
-  -I "$PROTOBUF/conformance" -I "$PROTOBUF/src" \
+  -I "$PROTOBUF/conformance" -I "$PROTOBUF/src" -I fixture \
   --arkts_out=json=true:generated-ets "$@"
 
 protoc \

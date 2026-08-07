@@ -13,9 +13,11 @@ const REQUEST_PROTO_FILE_FIELD = 15;
 
 // google.protobuf.compiler.CodeGeneratorResponse 及其 File 子消息的 wire tag。
 const RESPONSE_ERROR_TAG = 10;
+const RESPONSE_SUPPORTED_FEATURES_TAG = 16;
 const RESPONSE_FILE_TAG = 122;
 const RESPONSE_FILE_NAME_TAG = 10;
 const RESPONSE_FILE_CONTENT_TAG = 122;
+const FEATURE_PROTO3_OPTIONAL = 1;
 
 export function decodeRequest(input: Uint8Array): GeneratorRequest {
   const reader: protobuf.Reader = Reader.create(input);
@@ -57,6 +59,8 @@ export function encodeResponse(files: GeneratedFile[], error?: string): Uint8Arr
   // 插件错误必须写入 CodeGeneratorResponse.error，不能向 stdout 输出普通文本。
   if (error !== undefined) {
     writer.uint32(RESPONSE_ERROR_TAG).string(error);
+  } else {
+    writer.uint32(RESPONSE_SUPPORTED_FEATURES_TAG).uint64(FEATURE_PROTO3_OPTIONAL);
   }
   for (const file of files) {
     writer.uint32(RESPONSE_FILE_TAG)

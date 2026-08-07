@@ -1,12 +1,6 @@
 import type { IOneofDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { isBytesType, scalarTypeName } from '../model/descriptor-types.js';
-import type {
-  EnumFieldModel,
-  FieldModel,
-  MapFieldModel,
-  ScalarShape,
-  ValueFieldModel
-} from '../model/field-model.js';
+import type { EnumFieldModel, FieldModel, MapFieldModel, ScalarShape, ValueFieldModel } from '../model/field-model.js';
 import { requireArkMemberName, toUpperCamel } from '../naming.js';
 import { renderSource } from '../source-template.js';
 import { requireScalarShape } from './scalar-shapes.js';
@@ -18,18 +12,15 @@ import { isSpecialWktMessage } from './wkt-json-kind.js';
 export class JsonCodecRenderer {
   public constructor(
     private readonly messageName: string,
-    private readonly oneofs: IOneofDescriptorProto[]
-  ) {
-  }
+    private readonly oneofs: IOneofDescriptorProto[],
+  ) {}
 
   public renderTraversal(fields: FieldModel[]): string {
     return fields.map((field): string => this.renderTraversalField(field)).join('\n');
   }
 
   public renderReadJson(fields: FieldModel[]): string {
-    const cases: string = fields
-      .map((field): string => this.renderReadCase(field))
-      .join('\n');
+    const cases: string = fields.map((field): string => this.renderReadCase(field)).join('\n');
     const initialOneofCases: string = this.oneofs.map((): string => '0').join(', ');
     return renderSource`
       static readJson(reader: JsonReader, ignoreUnknownFields: boolean): ${this.messageName} {
@@ -73,8 +64,7 @@ export class JsonCodecRenderer {
   private renderTraversalField(field: FieldModel): string {
     const fieldInfo: string = 'fieldInfo';
     const jsonName: string = field.jsonName === field.protoName ? '' : `, ${quote(field.jsonName)}`;
-    const declaration: string =
-      `const fieldInfo: FieldInfo = new FieldInfo(${field.number}, ${quote(field.protoName)}${jsonName});`;
+    const declaration: string = `const fieldInfo: FieldInfo = new FieldInfo(${field.number}, ${quote(field.protoName)}${jsonName});`;
     if (field.kind === 'map') {
       return renderSource`
         if (this.${field.name}.size !== 0) {
@@ -128,8 +118,10 @@ export class JsonCodecRenderer {
     if (typeName === 'bytes') {
       return `visitor.visitBytes(${value}, ${fieldInfo});`;
     }
+    // prettier-ignore
     if (typeName === 'int64' || typeName === 'uint64' || typeName === 'sint64' ||
-      typeName === 'fixed64' || typeName === 'sfixed64') {
+      typeName === 'fixed64' || typeName === 'sfixed64'
+    ) {
       return `visitor.visitBigInt(${value}, ProtoValueKind.${kindFor(typeName)}, ${fieldInfo});`;
     }
     if (typeName === 'bool') {
@@ -162,7 +154,7 @@ export class JsonCodecRenderer {
       this.renderNullGuard(field),
       this.renderCaseOneofGuard(field),
       this.renderReadBody(field),
-      'break;'
+      'break;',
     ]
       .filter((statement): boolean => statement.length !== 0)
       .join('\n');
@@ -175,6 +167,7 @@ export class JsonCodecRenderer {
    * JSON 名与 proto 名都要接受，两者一致时只发一个 case。
    */
   private renderCaseLabels(field: FieldModel): string {
+    // prettier-ignore
     const aliases: string[] = field.protoName === field.jsonName
       ? [field.jsonName]
       : [field.jsonName, field.protoName];
@@ -433,6 +426,7 @@ function isNullValue(field: FieldModel): boolean {
 }
 
 function acceptsJsonNullAsValue(field: FieldModel): boolean {
+  // prettier-ignore
   return isNullValue(field) ||
     (field.kind === 'message' && field.symbol.fullName === '.google.protobuf.Value');
 }

@@ -17,6 +17,7 @@ enum Status {
 message Profile {
   string nickname = 1;
   int32 age = 2;
+  optional int32 level = 3;
 }
 
 // 字段覆盖 singular、enum、packed repeated、非 packed repeated、map、

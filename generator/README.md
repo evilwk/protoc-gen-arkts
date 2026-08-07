@@ -7,6 +7,7 @@
 - proto3 message、enum 和嵌套类型
 - 全部标准标量类型
 - singular、repeated、packed/unpacked 字段
+- proto3 optional 显式 presence
 - map、oneof 和跨文件引用
 - Protobuf 二进制编码与解码
 - 可选生成 proto3 canonical JSON
@@ -18,7 +19,6 @@
 
 - proto2
 - Editions
-- proto3 optional
 - TextFormat
 - group 和 extensions
 - 解码后保留并重新写出未知字段

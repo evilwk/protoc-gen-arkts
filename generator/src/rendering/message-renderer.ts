@@ -1,6 +1,6 @@
 import type { IOneofDescriptorProto } from 'protobufjs/ext/descriptor/index.js';
 import { DescriptorModel } from '../model/descriptor-model.js';
-import type { FieldModel, MapFieldModel } from '../model/field-model.js';
+import type { FieldModel, MapFieldModel, ValueFieldModel } from '../model/field-model.js';
 import type { FileModel, MessageTypeSymbol } from '../model/symbols.js';
 import type { PluginOptions } from '../model/plugin.js';
 import { indent, requireArkMemberName, toUpperCamel } from '../naming.js';
@@ -25,7 +25,7 @@ export class ArkTSMessageRenderer {
     file: FileModel,
     model: DescriptorModel,
     imports: ReadonlyMap<string, string>,
-    options: PluginOptions
+    options: PluginOptions,
   ) {
     this.oneofs = symbol.message.oneofDecl ?? [];
     const resolver: FieldModelResolver = new FieldModelResolver(file, model, imports);
@@ -56,14 +56,16 @@ export class ArkTSMessageRenderer {
 
     const oneofMethods: string[] = [];
     for (let index: number = 0; index < this.oneofs.length; index++) {
-      const oneofName: string = requireArkMemberName(
-        this.oneofs[index]?.name,
-        `${this.symbol.fileName}: oneof name`
+      const oneofName: string = requireArkMemberName(this.oneofs[index]?.name, `${this.symbol.fileName}: oneof name`);
+      const members: FieldModel[] = this.fields.filter((field): boolean => field.oneofIndex === index);
+      const optionalField: ValueFieldModel | undefined = members.find(
+        (field): field is ValueFieldModel => field.kind !== 'map' && field.optional === true,
       );
-      const members: FieldModel[] = this.fields.filter(
-        (field): boolean => field.oneofIndex === index
+      oneofMethods.push(
+        optionalField === undefined
+          ? this.renderOneofMethods(oneofName, members)
+          : this.renderOptionalMethods(oneofName, optionalField),
       );
-      oneofMethods.push(this.renderOneofMethods(oneofName, members));
     }
 
     const encoders: string = this.fields.map((field): string => this.codec.renderEncoder(field)).join('\n');
@@ -110,7 +112,7 @@ export class ArkTSMessageRenderer {
             }
           }
           return message;
-        }`)
+        }`),
     );
     if (mapReaders.length > 0) {
       methodParts.push(indent(mapReaders));
@@ -123,7 +125,7 @@ export class ArkTSMessageRenderer {
           }`),
         indent(this.jsonCodec.renderToJson()),
         indent(this.jsonCodec.renderFromJson()),
-        indent(this.jsonCodec.renderReadJson(this.fields))
+        indent(this.jsonCodec.renderReadJson(this.fields)),
       );
     }
 
@@ -142,7 +144,7 @@ export class ArkTSMessageRenderer {
       renderSource`
         get${toUpperCamel(oneofName)}Case(): number {
           return this.${oneofName}Case;
-        }`
+        }`,
     ];
     // setter 与 clear 都要先把同一 oneof 的所有成员复位，两处共用这段赋值。
     const resetMembers: string = fields
@@ -168,7 +170,7 @@ export class ArkTSMessageRenderer {
             ${resetMembers}
             this.${field.name} = value;
             this.${oneofName}Case = ${field.number};
-          }`
+          }`,
       );
     }
 
@@ -177,10 +179,34 @@ export class ArkTSMessageRenderer {
         clear${toUpperCamel(oneofName)}(): void {
           ${resetMembers}
           this.${oneofName}Case = 0;
-        }`
+        }`,
     );
 
     return methods.join('\n\n');
+  }
+
+  private renderOptionalMethods(oneofName: string, field: ValueFieldModel): string {
+    const methodName: string = toUpperCamel(field.name);
+    const fallback: string = field.kind === 'message' ? 'undefined' : field.defaultValue;
+    const setterType: string = field.kind === 'message' ? concreteType(field.arkType) : field.arkType;
+    return renderSource`
+      has${methodName}(): boolean {
+        return this.${oneofName}Case === ${field.number};
+      }
+
+      get${methodName}(): ${field.arkType} {
+        return this.has${methodName}() ? this.${field.name} : ${fallback};
+      }
+
+      set${methodName}(value: ${setterType}): void {
+        this.${field.name} = value;
+        this.${oneofName}Case = ${field.number};
+      }
+
+      clear${methodName}(): void {
+        this.${field.name} = ${field.defaultValue};
+        this.${oneofName}Case = 0;
+      }`;
   }
 
   private requireUniqueMemberNames(file: FileModel): void {
@@ -190,13 +216,12 @@ export class ArkTSMessageRenderer {
       if (existing !== undefined) {
         const conflicts: string[] = [existing, field.protoName].sort();
         throw new Error(
-          `${file.fileName}: ${this.symbol.fullName}: ArkTS member ${field.name} conflicts between ${conflicts[0]} and ${conflicts[1]}`
+          `${file.fileName}: ${this.symbol.fullName}: ArkTS member ${field.name} conflicts between ${conflicts[0]} and ${conflicts[1]}`,
         );
       }
       names.set(field.name, field.protoName);
     }
   }
-
 }
 
 function concreteType(arkType: string): string {

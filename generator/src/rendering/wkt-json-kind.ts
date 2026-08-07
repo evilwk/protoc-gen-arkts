@@ -26,7 +26,7 @@ export const WRAPPERS: ReadonlyMap<string, string> = new Map<string, string>([
   ['.google.protobuf.UInt32Value', 'UInt32'],
   ['.google.protobuf.BoolValue', 'Bool'],
   ['.google.protobuf.StringValue', 'String'],
-  ['.google.protobuf.BytesValue', 'Bytes']
+  ['.google.protobuf.BytesValue', 'Bytes'],
 ]);
 
 export enum WktJsonKind {
@@ -39,7 +39,7 @@ export enum WktJsonKind {
   STRUCT,
   VALUE,
   LIST_VALUE,
-  ANY
+  ANY,
 }
 
 export function wktJsonKind(fullName: string): WktJsonKind {

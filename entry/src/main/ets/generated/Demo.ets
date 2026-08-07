@@ -16,6 +16,26 @@ export enum Status {
 export class Profile implements ProtoMessage {
   nickname: string = '';
   age: number = 0;
+  private level: number = 0;
+  private levelCase: number = 0;
+
+  hasLevel(): boolean {
+    return this.levelCase === 3;
+  }
+
+  getLevel(): number {
+    return this.hasLevel() ? this.level : 0;
+  }
+
+  setLevel(value: number): void {
+    this.level = value;
+    this.levelCase = 3;
+  }
+
+  clearLevel(): void {
+    this.level = 0;
+    this.levelCase = 0;
+  }
 
   private writeTo(writer: ProtoWriter): void {
     if (this.nickname !== '') {
@@ -25,6 +45,10 @@ export class Profile implements ProtoMessage {
     if (this.age !== 0) {
       writer.writeTag(2, ProtoWireType.VARINT);
       writer.writeInt32(this.age);
+    }
+    if (this.levelCase === 3) {
+      writer.writeTag(3, ProtoWireType.VARINT);
+      writer.writeInt32(this.level);
     }
   }
 
@@ -55,6 +79,9 @@ export class Profile implements ProtoMessage {
         case 16:
           message.age = reader.readInt32();
           break;
+        case 24:
+          message.setLevel(reader.readInt32());
+          break;
         default:
           reader.skipField(Math.floor(tag / 8), tag & 0x07);
       }
@@ -70,6 +97,10 @@ export class Profile implements ProtoMessage {
     if (this.age !== 0) {
       const fieldInfo: FieldInfo = new FieldInfo(2, "age");
       visitor.visitNumber(this.age, ProtoValueKind.INT32, fieldInfo);
+    }
+    if (this.levelCase === 3) {
+      const fieldInfo: FieldInfo = new FieldInfo(3, "level");
+      visitor.visitNumber(this.level, ProtoValueKind.INT32, fieldInfo);
     }
   }
 
@@ -87,7 +118,7 @@ export class Profile implements ProtoMessage {
   static readJson(reader: JsonReader, ignoreUnknownFields: boolean): Profile {
     const message: Profile = new Profile();
     const seenFields: Set<number> = new Set<number>();
-    const oneofCases: number[] = [];
+    const oneofCases: number[] = [0];
     reader.beginObject();
     while (reader.hasMoreMembers()) {
       const key: string = reader.readKey();
@@ -107,6 +138,18 @@ export class Profile implements ProtoMessage {
             break;
           }
           message.age = ProtoJson.readInt32(reader);
+          break;
+        case "level":
+          ProtoJson.requireUnseenField(seenFields, 3);
+          if (ProtoJson.isNull(reader)) {
+            reader.readNull();
+            break;
+          }
+          if (oneofCases[0] !== 0) {
+            throw new Error('Multiple JSON fields set in oneof "_level"');
+          }
+          oneofCases[0] = 3;
+          message.setLevel(ProtoJson.readInt32(reader));
           break;
         default:
           if (!ignoreUnknownFields) {

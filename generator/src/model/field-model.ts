@@ -1,9 +1,4 @@
-import type {
-  EnumTypeSymbol,
-  FieldTypeSymbol,
-  MapTypeSymbol,
-  MessageTypeSymbol
-} from './symbols.js';
+import type { EnumTypeSymbol, FieldTypeSymbol, MapTypeSymbol, MessageTypeSymbol } from './symbols.js';
 
 export interface ScalarShape {
   readonly arkType: string;
@@ -25,16 +20,15 @@ export interface FieldModelBase extends ScalarShape {
   readonly typeName: string;
   readonly repeated: boolean;
   /**
-   * 编码形态：是否按 packed 写出。由 proto 声明决定。
+   * 编码形态：是否按 packed 写出。
    */
   readonly packed: boolean;
   /**
    * 解码形态：类型是否允许 packed 编码。
-   *
-   * 与 packed 分开，因为规范要求 parser 无论字段声明为哪种，
-   * packed 与非 packed 的输入都必须接受。
+   * 规范要求 parser 无论字段声明为哪种，packed 与非 packed 的输入都必须接受。
    */
   readonly packable: boolean;
+  readonly optional?: true;
   readonly oneofIndex?: number;
 }
 
@@ -66,10 +60,7 @@ export type FieldModel = ValueFieldModel | MapFieldModel;
 /**
  * 按解析出的符号种类把字段基础属性收敛为判别联合成员。
  */
-export function toValueFieldModel(
-  fieldBase: FieldModelBase,
-  symbol: FieldTypeSymbol | undefined
-): ValueFieldModel {
+export function toValueFieldModel(fieldBase: FieldModelBase, symbol: FieldTypeSymbol | undefined): ValueFieldModel {
   if (symbol === undefined) {
     return { kind: 'scalar', ...fieldBase } satisfies ScalarFieldModel;
   }

@@ -43,7 +43,7 @@ flowchart LR
 `DescriptorModel` 在渲染前关闭文件和符号级错误，包括重复文件、重复符号、扁平 ArkTS 名称冲突、输出文件冲突、缺失生成目标和非 proto3 输入。
 
 `FieldModelResolver` 只向渲染器暴露只读判别联合，普通字段和 map 字段不共享可选属性。
-它负责字段号、oneof index、map entry、map key、类型解析、group 与 proto3 optional 校验。
+它负责字段号、oneof index、map entry、map key、类型解析、group 与 proto3 optional presence 校验。
 错误继续写入 `CodeGeneratorResponse.error`，不会污染 stdout 的 protoc 字节协议。
 
 ## 扩展入口

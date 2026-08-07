@@ -21,13 +21,13 @@ const SCALAR_SHAPES: Readonly<Record<ScalarTypeName, ScalarShape>> = {
     'new collections.Uint8Array(0)',
     'writeBytes',
     'readBytes',
-    'LENGTH_DELIMITED'
+    'LENGTH_DELIMITED',
   ),
   uint32: shape('number', '0', 'writeUInt32', 'readUInt32', 'VARINT'),
   sfixed32: shape('number', '0', 'writeSFixed32', 'readSFixed32', 'FIXED32'),
   sfixed64: shape('bigint', '0n', 'writeSFixed64', 'readSFixed64', 'FIXED64'),
   sint32: shape('number', '0', 'writeSInt32', 'readSInt32', 'VARINT'),
-  sint64: shape('bigint', '0n', 'writeSInt64', 'readSInt64', 'VARINT')
+  sint64: shape('bigint', '0n', 'writeSInt64', 'readSInt64', 'VARINT'),
 };
 
 /**
@@ -49,14 +49,14 @@ export function shape(
   defaultValue: string,
   writerMethod: string,
   readerMethod: string,
-  wireType: string
+  wireType: string,
 ): ScalarShape {
   return {
     arkType,
     defaultValue,
     writerMethod,
     readerMethod,
-    wireType
+    wireType,
   };
 }
 

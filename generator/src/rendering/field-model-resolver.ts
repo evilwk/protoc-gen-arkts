@@ -54,6 +54,7 @@ interface ResolveValueParams {
   readonly typeName: string;
   readonly resolvedSymbol: FieldTypeSymbol | undefined;
   readonly repeated: boolean;
+  readonly optional: boolean;
   readonly oneofIndex: number | undefined;
 }
 
@@ -101,10 +102,6 @@ export class FieldModelResolver {
       throw new Error(`${context}: invalid field number ${number}`);
     }
 
-    if (field.proto3Optional === true) {
-      throw new Error(`${context}: proto3 optional is not supported`);
-    }
-
     // --- 校验 oneof 归属 ---
     const oneofIndex: number | undefined = rawField.oneofIndex;
     if (oneofIndex !== undefined && (!Number.isInteger(oneofIndex) ||
@@ -118,6 +115,22 @@ export class FieldModelResolver {
     const { type, typeName } = typeInfo;
     const resolvedSymbol: TypeSymbol | undefined = typeInfo.symbol;
     const repeated: boolean = isRepeatedLabel(rawField.label);
+    const optional: boolean = field.proto3Optional === true;
+
+    if (optional) {
+      if (repeated) {
+        throw new Error(`${context}: proto3 optional fields cannot be repeated`);
+      }
+      if (oneofIndex === undefined) {
+        throw new Error(`${context}: proto3 optional field is missing its synthetic oneof`);
+      }
+      const oneofMembers: IFieldDescriptorProto[] = (owner.message.field ?? []).filter(
+        (candidate): boolean => candidate.oneofIndex === oneofIndex
+      );
+      if (oneofMembers.length !== 1) {
+        throw new Error(`${context}: proto3 optional synthetic oneof must contain exactly one field`);
+      }
+    }
 
     // --- 按字段种类分派 ---
     // protoc 将 map 编译成 repeated 的合成 entry message，这里还原为 ArkTS Map 字段。
@@ -154,6 +167,7 @@ export class FieldModelResolver {
       typeName,
       resolvedSymbol,
       repeated,
+      optional,
       oneofIndex
     });
   }
@@ -164,7 +178,7 @@ export class FieldModelResolver {
   private resolveValue(params: ResolveValueParams): ValueFieldModel {
     const {
       rawField, context, protoName, jsonName, name, number, type, typeName,
-      resolvedSymbol, repeated, oneofIndex
+      resolvedSymbol, repeated, optional, oneofIndex
     } = params;
 
     // --- 构造标量形态 ---
@@ -194,6 +208,7 @@ export class FieldModelResolver {
       writerMethod: scalarShape.writerMethod,
       readerMethod: scalarShape.readerMethod,
       wireType: scalarShape.wireType,
+      ...(optional ? { optional: true as const } : {}),
       ...(oneofIndex === undefined ? {} : { oneofIndex })
     };
 

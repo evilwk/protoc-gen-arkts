@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package arkts.conformance;
+
+message OptionalPresence {
+  message Child {
+    int32 first = 1;
+    int32 second = 2;
+  }
+
+  optional int32 count = 1;
+  optional string label = 2;
+  optional Child child = 3;
+  int32 implicit_count = 4;
+}

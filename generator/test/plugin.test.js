@@ -8,6 +8,7 @@ import {
   generateComplex,
   generateFixture,
   generateGroups,
+  generateOptional,
   generateServices,
   plugin,
   vectorDir
@@ -37,6 +38,35 @@ test('generates nested, imported, repeated, map, and oneof fields', () => {
   assert.match(complex, /setEmail\(value: string\)/);
   assert.match(complex, /SharedItem\.mergeFrom/);
   assert.match(complex, /import \{ SharedItem \} from '\.\/Shared';/);
+});
+
+test('generates field presence APIs for proto3 optional', () => {
+  const generated = generateOptional();
+  assert.match(generated, /private count: number = 0;/);
+  assert.match(generated, /private countCase: number = 0;/);
+  assert.match(generated, /hasCount\(\): boolean \{\n\s+return this\.countCase === 1;/);
+  assert.match(generated, /getCount\(\): number \{\n\s+return this\.hasCount\(\) \? this\.count : 0;/);
+  assert.match(generated, /setCount\(value: number\): void \{\n\s+this\.count = value;\n\s+this\.countCase = 1;/);
+  assert.match(generated, /clearCount\(\): void \{\n\s+this\.count = 0;\n\s+this\.countCase = 0;/);
+  assert.match(generated, /setChild\(value: OptionalFixtureChild\): void/);
+
+  // 显式设置默认值仍需编码；普通 proto3 标量继续按非默认值编码。
+  assert.match(generated, /if \(this\.countCase === 1\) \{\n\s+writer\.writeTag\(1,/);
+  assert.match(generated, /if \(this\.implicitCount !== 0\) \{/);
+  assert.match(generated, /case 8:\n\s+message\.setCount\(reader\.readInt32\(\)\);/);
+
+  // synthetic oneof 不应暴露成普通 oneof API，真实 oneof 仍然保留。
+  assert.doesNotMatch(generated, /getCountCase\(\)/);
+  assert.match(generated, /getChoiceCase\(\): number/);
+});
+
+test('uses proto3 optional presence when generating JSON', () => {
+  const generated = generateOptional(true);
+  assert.match(
+    generated,
+    /if \(this\.countCase === 1\) \{\n\s+const fieldInfo: FieldInfo = new FieldInfo\(1, "count"\);/
+  );
+  assert.match(generated, /case "count":\n\s+ProtoJson\.requireUnseenField[\s\S]*?message\.setCount\(/);
 });
 
 test('resolves cross-group imports in both directions', () => {

@@ -6,6 +6,7 @@
 
 - proto3 二进制输入与输出
 - proto3 JSON 输入与输出
+- proto3 optional 显式 presence
 - JSON ignore-unknown 模式
 - 标准 WKT 和 Any
 - REQUIRED 和 RECOMMENDED 测试

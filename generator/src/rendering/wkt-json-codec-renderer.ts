@@ -4,14 +4,7 @@ import type { FieldModel, MapFieldModel, MessageFieldModel, ValueFieldModel } fr
 import { toUpperCamel } from '../naming.js';
 import { renderSource } from '../source-template.js';
 import { JsonCodecRenderer } from './json-codec-renderer.js';
-import {
-  LIST_VALUE,
-  STRUCT,
-  VALUE,
-  WktJsonKind,
-  WRAPPERS,
-  wktJsonKind
-} from './wkt-json-kind.js';
+import { LIST_VALUE, STRUCT, VALUE, WktJsonKind, WRAPPERS, wktJsonKind } from './wkt-json-kind.js';
 
 export { isSpecialWktMessage } from './wkt-json-kind.js';
 
@@ -25,7 +18,7 @@ export class WktJsonCodecRenderer extends JsonCodecRenderer {
     private readonly wktName: string,
     private readonly arkName: string,
     oneofs: IOneofDescriptorProto[],
-    private readonly fields: FieldModel[]
+    private readonly fields: FieldModel[],
   ) {
     super(arkName, oneofs);
     this.kind = wktJsonKind(wktName);
@@ -223,9 +216,16 @@ function requireWrapperMethod(wktName: string): string {
 function requireSecondsAndNanos(wktName: string, fields: FieldModel[]): void {
   const seconds: FieldModel | undefined = fields.find((field): boolean => field.protoName === 'seconds');
   const nanos: FieldModel | undefined = fields.find((field): boolean => field.protoName === 'nanos');
-  if (seconds === undefined || seconds.kind !== 'scalar' || seconds.repeated ||
-    scalarTypeName(seconds.type) !== 'int64' || nanos === undefined || nanos.kind !== 'scalar' ||
-    nanos.repeated || scalarTypeName(nanos.type) !== 'int32') {
+  if (
+    seconds === undefined ||
+    seconds.kind !== 'scalar' ||
+    seconds.repeated ||
+    scalarTypeName(seconds.type) !== 'int64' ||
+    nanos === undefined ||
+    nanos.kind !== 'scalar' ||
+    nanos.repeated ||
+    scalarTypeName(nanos.type) !== 'int32'
+  ) {
     throw new Error(`${wktName}: expected singular int64 seconds and int32 nanos fields`);
   }
 }
@@ -234,11 +234,10 @@ function requireRepeatedField(
   wktName: string,
   fields: FieldModel[],
   protoName: string,
-  scalarName: string
+  scalarName: string,
 ): ValueFieldModel {
   const field: FieldModel | undefined = fields.find((candidate): boolean => candidate.protoName === protoName);
-  if (field === undefined || field.kind === 'map' || !field.repeated ||
-    scalarTypeName(field.type) !== scalarName) {
+  if (field === undefined || field.kind === 'map' || !field.repeated || scalarTypeName(field.type) !== scalarName) {
     throw new Error(`${wktName}: expected repeated ${scalarName} ${protoName} field`);
   }
   return field;
@@ -246,8 +245,13 @@ function requireRepeatedField(
 
 function requireStructFields(fields: FieldModel[]): MapFieldModel {
   const field: FieldModel | undefined = fields.find((candidate): boolean => candidate.protoName === 'fields');
-  if (field === undefined || field.kind !== 'map' || scalarTypeName(field.mapKey.type) !== 'string' ||
-    field.mapValue.kind !== 'message' || field.mapValue.symbol.fullName !== VALUE) {
+  if (
+    field === undefined ||
+    field.kind !== 'map' ||
+    scalarTypeName(field.mapKey.type) !== 'string' ||
+    field.mapValue.kind !== 'message' ||
+    field.mapValue.symbol.fullName !== VALUE
+  ) {
     throw new Error(`${STRUCT}: expected map<string, Value> fields field`);
   }
   return field;
@@ -284,12 +288,20 @@ function requireValueFields(fields: FieldModel[]): ValueFields {
   const boolValue: ValueFieldModel = find('bool_value');
   const structValue: ValueFieldModel = find('struct_value');
   const listValue: ValueFieldModel = find('list_value');
-  if (nullValue.kind !== 'enum' || nullValue.symbol.fullName !== '.google.protobuf.NullValue' ||
-    numberValue.kind !== 'scalar' || scalarTypeName(numberValue.type) !== 'double' ||
-    stringValue.kind !== 'scalar' || scalarTypeName(stringValue.type) !== 'string' ||
-    boolValue.kind !== 'scalar' || scalarTypeName(boolValue.type) !== 'bool' ||
-    structValue.kind !== 'message' || structValue.symbol.fullName !== STRUCT ||
-    listValue.kind !== 'message' || listValue.symbol.fullName !== LIST_VALUE) {
+  if (
+    nullValue.kind !== 'enum' ||
+    nullValue.symbol.fullName !== '.google.protobuf.NullValue' ||
+    numberValue.kind !== 'scalar' ||
+    scalarTypeName(numberValue.type) !== 'double' ||
+    stringValue.kind !== 'scalar' ||
+    scalarTypeName(stringValue.type) !== 'string' ||
+    boolValue.kind !== 'scalar' ||
+    scalarTypeName(boolValue.type) !== 'bool' ||
+    structValue.kind !== 'message' ||
+    structValue.symbol.fullName !== STRUCT ||
+    listValue.kind !== 'message' ||
+    listValue.symbol.fullName !== LIST_VALUE
+  ) {
     throw new Error(`${VALUE}: unexpected kind oneof fields`);
   }
   return { nullValue, numberValue, stringValue, boolValue, structValue, listValue };

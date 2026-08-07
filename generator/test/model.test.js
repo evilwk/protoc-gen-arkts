@@ -99,7 +99,18 @@ test('rejects invalid fields and unsupported descriptor semantics', () => {
       name: 'Broken',
       field: [{ name: 'bad', number: 1, type: 5, proto3Optional: true }]
     }),
-    /proto3 optional is not supported/
+    /proto3 optional field is missing its synthetic oneof/
+  );
+  assert.throws(
+    () => generateMessage({
+      name: 'Broken',
+      oneofDecl: [{ name: '_bad' }],
+      field: [
+        { name: 'bad', number: 1, type: 5, oneofIndex: 0, proto3Optional: true },
+        { name: 'also_bad', number: 2, type: 5, oneofIndex: 0 }
+      ]
+    }),
+    /proto3 optional synthetic oneof must contain exactly one field/
   );
   assert.throws(
     () => generateMessage({
