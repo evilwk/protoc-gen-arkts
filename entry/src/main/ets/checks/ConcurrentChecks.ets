@@ -1,5 +1,7 @@
-import { collections, lang } from '@kit.ArkTS';
-import { DEMO_SERVICE_RSP_DECODERS, Envelope, Profile, Status } from '../generated/Demo';
+import { collections } from '@kit.ArkTS';
+import { ProtoMessage } from 'protoc-gen-arkts-runtime';
+import { DemoService, Envelope, Status } from '../generated/Demo';
+import { decodeOuterResponse } from './RpcCodec';
 
 /**
  * 子线程侧的验证逻辑。
@@ -45,27 +47,19 @@ export function decodeInTask(bytes: collections.Uint8Array): string {
 }
 
 /**
- * 经生成的响应解码表在子线程里按方法名解码。
- *
- * 类与函数都不是 Sendable，传不进子线程，因此跨线程只传方法名，
- * 由子线程侧查表拿到 decode。这是解码表存在的唯一理由。
+ * 子线程先拆模拟 RPC envelope，再通过生成 service 的静态边界解码 protobuf。
  */
 @Concurrent
-export function decodeByMethodInTask(methodName: string, bytes: collections.Uint8Array): string {
-  const decoder: ((bytes: Uint8Array | collections.Uint8Array) => lang.ISendable) | undefined =
-    DEMO_SERVICE_RSP_DECODERS.get(methodName);
-  if (decoder === undefined) {
-    return `解码表里没有方法 ${methodName}`;
+export function decodeRpcResponseInTask(
+  service: string,
+  method: string,
+  rawBytes: ArrayBuffer
+): ProtoMessage {
+  const protobufPayload: ArrayBuffer = decodeOuterResponse(rawBytes);
+  if (service === DemoService.SERVICE_NAME) {
+    return DemoService.decodeResponse(method, protobufPayload);
   }
-
-  const decoded: lang.ISendable = decoder(bytes);
-  if (methodName === 'GetProfile') {
-    const profile: Profile = decoded as Profile;
-    return profile.nickname === 'kyle' ? '' : `按表解码 Profile 错误：「${profile.nickname}」`;
-  }
-
-  const envelope: Envelope = decoded as Envelope;
-  return envelope.code === -42 ? '' : `按表解码 Envelope 错误：code=${envelope.code}`;
+  throw new Error(`Unknown RPC service: ${service}`);
 }
 
 /**

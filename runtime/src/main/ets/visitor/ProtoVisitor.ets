@@ -1,13 +1,20 @@
-import { collections } from '@kit.ArkTS';
+import { collections, lang } from '@kit.ArkTS';
 import { FieldInfo } from './FieldInfo';
 import { ProtoValueKind } from './ProtoValueKind';
 
 /**
- * 开启 JSON 后生成 message 实现的统一输出契约。
+ * 所有生成 message 实现的基础 wire 契约。
  */
-export interface ProtoMessage {
+export interface ProtoMessage extends lang.ISendable {
   encode(): collections.Uint8Array;
 
+  encodeBuffer(): ArrayBuffer;
+}
+
+/**
+ * 开启 JSON 后生成 message 实现的 JSON 输出契约。
+ */
+export interface ProtoJsonMessage extends ProtoMessage {
   traverse(visitor: ProtoVisitor): void;
 
   toJson(): string;
@@ -31,7 +38,7 @@ export interface ProtoVisitor {
 
   visitNull(field: FieldInfo): void;
 
-  visitMessage(value: ProtoMessage, field: FieldInfo): void;
+  visitMessage(value: ProtoJsonMessage, field: FieldInfo): void;
 
   beginMessage(field: FieldInfo): void;
 

@@ -8,7 +8,8 @@
 - proto3 canonical JSON
 - Empty、Wrappers、NullValue、Timestamp、Duration、FieldMask、Struct、Value、ListValue 和 Any
 - HarmonyOS Sendable Array、Map 和 bytes
-- 原生 `Uint8Array` 与 `ArrayBuffer`
+- 原生 `Uint8Array`、`collections.Uint8Array` 与 `ArrayBuffer` 统一解码输入
+- `ProtoMessage`、`ProtoJsonMessage` 与协议无关的 `RpcClient` 契约
 
 ## 不支持范围
 

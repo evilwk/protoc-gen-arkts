@@ -34,13 +34,14 @@ export type FieldTypeSymbol = Exclude<TypeSymbol, MapTypeSymbol>;
  */
 export interface ServiceMethodModel {
   readonly protoName: string;
+  readonly arkName: string;
+  readonly inputFullName: string;
   readonly outputFullName: string;
 }
 
 export interface ServiceModel {
   readonly protoName: string;
   readonly arkName: string;
-  readonly fullName: string;
   readonly methods: readonly ServiceMethodModel[];
 }
 

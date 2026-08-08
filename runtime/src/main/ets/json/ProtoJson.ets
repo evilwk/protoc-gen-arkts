@@ -6,7 +6,7 @@ import { JsonEncodingVisitor } from './JsonEncodingVisitor';
 import { ProtoContainers } from '../ProtoContainers';
 import { FieldInfo } from '../visitor/FieldInfo';
 import { ProtoValueKind } from '../visitor/ProtoValueKind';
-import { ProtoMessage, ProtoVisitor } from '../visitor/ProtoVisitor';
+import { ProtoJsonMessage, ProtoVisitor } from '../visitor/ProtoVisitor';
 import { decodeBase64, encodeBase64, formatJsonNumber, quoteJson } from './JsonSupport';
 import {
   ProtoJsonTimeValue, ProtoJsonWkt
@@ -29,7 +29,7 @@ const UINT64_MAX: bigint = 0xffffffffffffffffn;
  * 生成式 JSON 解析辅助能力的紧凑 facade。
  */
 export class ProtoJson {
-  static write(message: ProtoMessage): string {
+  static write(message: ProtoJsonMessage): string {
     const writer: JsonWriter = new JsonWriter();
     message.traverse(new JsonEncodingVisitor(writer));
     return writer.finish();
@@ -162,7 +162,7 @@ export class ProtoJson {
     visitor.endMap(field);
   }
 
-  static traverseMessage(visitor: ProtoVisitor, field: FieldInfo, message: ProtoMessage): void {
+  static traverseMessage(visitor: ProtoVisitor, field: FieldInfo, message: ProtoJsonMessage): void {
     visitor.beginMessage(field);
     message.traverse(visitor);
     visitor.endMessage(field);
@@ -228,7 +228,7 @@ export class ProtoJson {
   static traverseMessageField(
     visitor: ProtoVisitor,
     present: boolean,
-    message: ProtoMessage | undefined,
+    message: ProtoJsonMessage | undefined,
     fieldNumber: number,
     protoName: string,
     jsonName?: string
@@ -241,7 +241,7 @@ export class ProtoJson {
   static visitMessageField(
     visitor: ProtoVisitor,
     present: boolean,
-    message: ProtoMessage | undefined,
+    message: ProtoJsonMessage | undefined,
     fieldNumber: number,
     protoName: string,
     jsonName?: string

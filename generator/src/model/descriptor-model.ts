@@ -4,7 +4,7 @@ import type {
   IFileDescriptorProto,
   IServiceDescriptorProto,
 } from 'protobufjs/ext/descriptor/index.js';
-import { outputName, requireProtoIdentifier, toUpperCamel } from '../naming.js';
+import { outputName, requireProtoIdentifier, toArkMemberName, toUpperCamel } from '../naming.js';
 import type { PluginOptions } from './plugin.js';
 import type { FileModel, ServiceMethodModel, TypeSymbol } from './symbols.js';
 
@@ -86,7 +86,30 @@ class DescriptorModelBuilder {
         throw new Error(`descriptor for file "${fileName}" was not provided`);
       }
     }
+    this.validateServices();
     return { files: this.files, symbols: this.symbols };
+  }
+
+  private validateServices(): void {
+    for (const file of this.files.values()) {
+      for (const service of file.services) {
+        for (const method of service.methods) {
+          const context: string = `${file.fileName}: service ${service.protoName} method ${method.protoName}`;
+          this.requireMessage(method.inputFullName, `${context}: request`);
+          this.requireMessage(method.outputFullName, `${context}: response`);
+        }
+      }
+    }
+  }
+
+  private requireMessage(fullName: string, context: string): void {
+    const symbol: TypeSymbol | undefined = this.symbols.get(fullName);
+    if (symbol === undefined) {
+      throw new Error(`${context}: unresolved protobuf type ${fullName}`);
+    }
+    if (symbol.kind !== 'message') {
+      throw new Error(`${context}: type ${fullName} is not a message`);
+    }
   }
 
   private addFile(file: IFileDescriptorProto): void {
@@ -182,22 +205,49 @@ class FileSymbolCollector {
 
       // 收集服务的方法，但不包含 streaming 方法
       const methods: ServiceMethodModel[] = [];
+      const methodArkNames: Map<string, string> = new Map([
+        ['client', 'generated member client'],
+        ['decodeResponse', 'generated member decodeResponse'],
+      ]);
       for (const method of service.method ?? []) {
         const methodName: string = requireProtoIdentifier(method.name, `${fileName}: service ${protoName} method name`);
         if (method.clientStreaming === true || method.serverStreaming === true) {
           continue;
         }
+        const methodArkName: string = toArkMemberName(methodName);
+        const existingMethod: string | undefined = methodArkNames.get(methodArkName);
+        if (existingMethod !== undefined) {
+          throw new Error(
+            `${fileName}: service ${protoName} ArkTS member ${methodArkName} conflicts between ` +
+              `${existingMethod} and method ${methodName}`,
+          );
+        }
+        methodArkNames.set(methodArkName, `method ${methodName}`);
+
+        const inputFullName: string | undefined = method.inputType;
+        if (inputFullName === undefined || inputFullName.length === 0) {
+          throw new Error(`${fileName}: service ${protoName} method ${methodName} has no input type`);
+        }
         const outputFullName: string | undefined = method.outputType;
         if (outputFullName === undefined || outputFullName.length === 0) {
           throw new Error(`${fileName}: service ${protoName} method ${methodName} has no output type`);
         }
-        methods.push({ protoName: methodName, outputFullName });
+        methods.push({ protoName: methodName, arkName: methodArkName, inputFullName, outputFullName });
+      }
+
+      if (methods.length > 0) {
+        const existingDeclaration: string | undefined = this.localNames.get(arkName);
+        if (existingDeclaration !== undefined) {
+          throw new Error(
+            `${fileName}: generated service class ${arkName} conflicts with ${existingDeclaration}`,
+          );
+        }
+        this.localNames.set(arkName, `service ${protoName}`);
       }
 
       this.file.services.push({
         protoName,
         arkName,
-        fullName: `${this.packagePrefix}.${protoName}`,
         methods,
       });
     }

@@ -1,12 +1,14 @@
 import { collections, taskpool } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { Envelope, Profile, Status } from '../generated/Demo';
+import { ProtoMessage, RpcClient } from 'protoc-gen-arkts-runtime';
+import { DemoService, Envelope, Profile, Status } from '../generated/Demo';
 import {
-  decodeByMethodInTask,
   decodeInTask,
+  decodeRpcResponseInTask,
   encodeInTask,
   mutateInTask
 } from '../checks/ConcurrentChecks';
+import { encodeOuterResponse } from '../checks/RpcCodec';
 
 /**
  * 单项验证的执行状态，驱动列表行的文案与配色。
@@ -16,6 +18,27 @@ enum CheckStatus {
   Running,
   Passed,
   Failed
+}
+
+class RecordingRpcClient implements RpcClient {
+  service: string = '';
+  method: string = '';
+  request: ProtoMessage | undefined = undefined;
+
+  async invoke<Response extends ProtoMessage>(
+    service: string,
+    method: string,
+    request: ProtoMessage
+  ): Promise<Response> {
+    this.service = service;
+    this.method = method;
+    this.request = request;
+    if (method !== 'GetProfile') {
+      throw new Error(`Unexpected test RPC method: ${method}`);
+    }
+    const response: ProtoMessage = Profile.decode(request.encode());
+    return response as Response;
+  }
 }
 
 /**
@@ -128,7 +151,8 @@ struct Index {
       new CheckItem('defaults', '默认值不上线', 'proto3 默认值不写入 wire，空 message 编码长度为 0'),
       new CheckItem('crossthread', '跨线程编解码', 'taskpool 子线程编码/解码，结果回主线程一致'),
       new CheckItem('reference', '@Sendable 引用传递', '子线程改写字段后主线程可见，嵌套 message 同为共享实例'),
-      new CheckItem('registry', '响应解码表', '跨线程只传方法名，子线程查生成的解码表拿到 decode')
+      new CheckItem('response', 'Service 响应解码', '同步与 TaskPool 统一调用静态 decodeResponse'),
+      new CheckItem('rpc', 'RpcClient 调用', '生成的 service 方法传递正确请求与方法标识')
     ];
   }
 
@@ -248,8 +272,10 @@ struct Index {
           return await this.verifyCrossThreadCodec();
         case 'reference':
           return await this.verifySendableReference();
-        case 'registry':
-          return await this.verifyResponseRegistry();
+        case 'response':
+          return await this.verifyResponseDecoding();
+        case 'rpc':
+          return await this.verifyRpcClient();
         default:
           return `未知的验证项 ${key}`;
       }
@@ -340,39 +366,78 @@ struct Index {
    * collections 容器的写入接口声明为可抛异常，这里统一兜住并转成可读信息。
    */
   /**
-   * 验证生成的响应解码表可跨线程按方法名分发，两个方法各走一条分支。
-   * 同时验证未登记的方法名会被解码表拒绝，而不是静默解出错误类型。
+   * 验证同步与 TaskPool 路径都通过 service 静态边界完成响应解码。
    */
-  private async verifyResponseRegistry(): Promise<string> {
+  private async verifyResponseDecoding(): Promise<string> {
     const envelope: Envelope = this.buildEnvelope();
     const profile: Profile = new Profile();
     profile.nickname = 'kyle';
     profile.age = 30;
 
+    const syncProfile: Profile = DemoService.decodeResponse(
+      'GetProfile', profile.encodeBuffer()
+    ) as Profile;
+    if (syncProfile.nickname !== 'kyle') {
+      return `同步解码 Profile 错误：「${syncProfile.nickname}」`;
+    }
+
     try {
-      const profileReason: string = await taskpool.execute(
-        decodeByMethodInTask, 'GetProfile', profile.encode()
-      ) as string;
-      if (profileReason.length > 0) {
-        return profileReason;
+      const taskProfile: Profile = await taskpool.execute(
+        decodeRpcResponseInTask,
+        DemoService.SERVICE_NAME,
+        'GetProfile',
+        encodeOuterResponse(profile.encodeBuffer())
+      ) as Profile;
+      if (taskProfile.nickname !== 'kyle') {
+        return `TaskPool 解码 Profile 错误：「${taskProfile.nickname}」`;
       }
 
-      const envelopeReason: string = await taskpool.execute(
-        decodeByMethodInTask, 'GetEnvelope', envelope.encode()
-      ) as string;
-      if (envelopeReason.length > 0) {
-        return envelopeReason;
+      const taskEnvelope: Envelope = await taskpool.execute(
+        decodeRpcResponseInTask,
+        DemoService.SERVICE_NAME,
+        'GetEnvelope',
+        encodeOuterResponse(envelope.encodeBuffer())
+      ) as Envelope;
+      if (taskEnvelope.code !== -42) {
+        return `TaskPool 解码 Envelope 错误：code=${taskEnvelope.code}`;
       }
 
-      const missingReason: string = await taskpool.execute(
-        decodeByMethodInTask, 'NotARegisteredMethod', profile.encode()
-      ) as string;
-      if (missingReason.length === 0) {
-        return '未登记的方法名应被解码表拒绝，实际通过了';
+      let rejected: boolean = false;
+      try {
+        await taskpool.execute(
+          decodeRpcResponseInTask,
+          DemoService.SERVICE_NAME,
+          'NotARegisteredMethod',
+          encodeOuterResponse(profile.encodeBuffer())
+        );
+      } catch (_error) {
+        rejected = true;
+      }
+      if (!rejected) {
+        return '未知方法应在 TaskPool 解码路径中被拒绝';
       }
     } catch (error) {
       const err: BusinessError = error as BusinessError;
       return `taskpool 执行失败 code=${err.code} ${err.message}`;
+    }
+    return '';
+  }
+
+  private async verifyRpcClient(): Promise<string> {
+    const client: RecordingRpcClient = new RecordingRpcClient();
+    const service: DemoService = new DemoService(client);
+    const request: Profile = new Profile();
+    request.nickname = 'rpc-client';
+
+    const response: Profile = await service.getProfile(request);
+    if (client.service !== 'DemoService' || client.method !== 'GetProfile') {
+      return `调用标识错误：${client.service}/${client.method}`;
+    }
+    if (client.request !== request) {
+      return 'RpcClient 没有收到原始 request 实例';
+    }
+    if (response.nickname !== request.nickname) {
+      return `响应类型或内容错误：「${response.nickname}」`;
     }
     return '';
   }
@@ -519,7 +584,7 @@ struct Index {
     if (buffer.byteLength !== 5) {
       return `byteLength 期望 5，实际 ${buffer.byteLength}`;
     }
-    const decoded: Profile = Profile.decode(new Uint8Array(buffer));
+    const decoded: Profile = Profile.decode(buffer);
     if (decoded.nickname !== 'abc') {
       return `nickname 期望「abc」，实际「${decoded.nickname}」`;
     }

@@ -185,6 +185,76 @@ test('rejects generated ArkTS member name collisions', () => {
   );
 });
 
+test('rejects generated service class and member name collisions', () => {
+  const messages = [{ name: 'Request' }, { name: 'Response' }];
+  const rpc = (name) => ({
+    name,
+    inputType: '.test.Request',
+    outputType: '.test.Response'
+  });
+
+  assert.throws(
+    () => DescriptorModel.build([
+      protoFile('service.proto', [...messages, { name: 'Gateway' }], {
+        package: 'test',
+        service: [{ name: 'Gateway', method: [rpc('Call')] }]
+      })
+    ], ['service.proto'], DEFAULT_OPTIONS),
+    /generated service class Gateway conflicts/
+  );
+
+  assert.throws(
+    () => DescriptorModel.build([
+      protoFile('service.proto', messages, {
+        package: 'test',
+        service: [{ name: 'Gateway', method: [rpc('Client')] }]
+      })
+    ], ['service.proto'], DEFAULT_OPTIONS),
+    /ArkTS member client conflicts/
+  );
+
+  assert.throws(
+    () => DescriptorModel.build([
+      protoFile('service.proto', messages, {
+        package: 'test',
+        service: [{ name: 'Gateway', method: [rpc('Get_item'), rpc('get_item')] }]
+      })
+    ], ['service.proto'], DEFAULT_OPTIONS),
+    /ArkTS member getItem conflicts/
+  );
+});
+
+test('rejects invalid unary request and response types', () => {
+  const messages = [{ name: 'Request' }, { name: 'Response' }];
+
+  assert.throws(
+    () => DescriptorModel.build([
+      protoFile('service.proto', messages, {
+        package: 'test',
+        service: [{
+          name: 'Gateway',
+          method: [{ name: 'Call', inputType: '.test.Missing', outputType: '.test.Response' }]
+        }]
+      })
+    ], ['service.proto'], DEFAULT_OPTIONS),
+    /request: unresolved protobuf type \.test\.Missing/
+  );
+
+  assert.throws(
+    () => DescriptorModel.build([
+      protoFile('service.proto', messages, {
+        package: 'test',
+        enumType: [{ name: 'Result', value: [{ name: 'RESULT_UNSPECIFIED', number: 0 }] }],
+        service: [{
+          name: 'Gateway',
+          method: [{ name: 'Call', inputType: '.test.Request', outputType: '.test.Result' }]
+        }]
+      })
+    ], ['service.proto'], DEFAULT_OPTIONS),
+    /response: type \.test\.Result is not a message/
+  );
+});
+
 test('encodes generation failures in CodeGeneratorResponse.error', () => {
   const response = runPlugin(new Uint8Array());
   const reader = protobuf.Reader.create(response);

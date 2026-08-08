@@ -25,6 +25,9 @@ service ItemService {
   // 响应类型定义在 shared.proto，需要跨文件 import。
   rpc GetShared(GetItemRequest) returns (fixture.complex.SharedItem);
 
+  // 请求类型定义在 shared.proto，调用方法签名需要跨文件 import。
+  rpc UpdateShared(fixture.complex.SharedItem) returns (GetItemResponse);
+
   // 无字段响应同样登记：decode 是构造响应实例的唯一入口。
   rpc Touch(GetItemRequest) returns (EmptyResponse);
 

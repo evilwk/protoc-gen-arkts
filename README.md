@@ -15,7 +15,7 @@
 - Protobuf 二进制编码与解码
 - proto3 canonical JSON 编码与解码
 - Empty、Wrappers、NullValue、Timestamp、Duration、FieldMask、Struct、Value、ListValue 和 Any
-- 按 service 生成响应解码表
+- 为 unary service 生成强类型调用类与静态响应解码入口
 - 多协议目录分组和跨组 import
 
 官方 conformance 当前结果：

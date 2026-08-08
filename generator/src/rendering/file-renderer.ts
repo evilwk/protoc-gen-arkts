@@ -5,7 +5,7 @@ import type { PluginOptions } from '../model/plugin.js';
 import type { FileModel, TypeSymbol } from '../model/symbols.js';
 import { relativeModule, requireArkIdentifier, stripProtoExtension, toUpperCamel } from '../naming.js';
 import { ArkTSMessageRenderer } from './message-renderer.js';
-import { ArkTSServiceRenderer, decodableResponses } from './service-renderer.js';
+import { ArkTSServiceRenderer, resolveServiceMethods } from './service-renderer.js';
 import { PLUGIN_VERSION } from '../version.js';
 
 const RUNTIME_MODULE: string = 'protoc-gen-arkts-runtime';
@@ -37,14 +37,14 @@ export class ArkTSFileRenderer {
     }
 
     for (const service of this.file.services) {
-      const registry: string | undefined = new ArkTSServiceRenderer(
+      const serviceClass: string | undefined = new ArkTSServiceRenderer(
         service,
         this.file,
         this.model,
         this.imports,
       ).render();
-      if (registry !== undefined) {
-        declarations.push(registry);
+      if (serviceClass !== undefined) {
+        declarations.push(serviceClass);
       }
     }
 
@@ -59,16 +59,16 @@ export class ArkTSFileRenderer {
   }
 
   private renderImports(): string {
-    // lang.ISendable 只被响应解码表用到，没有 service 时不引入。
-    const arkTSImports: string = this.hasServiceRegistry() ? 'collections, lang' : 'collections';
-    const wireRuntimeItems: string = 'ProtoContainers, ProtoReader, ProtoWireType, ProtoWriter';
+    const wireRuntimeItems: string = this.hasUnaryService()
+      ? 'ProtoBytes, ProtoContainers, ProtoMessage, ProtoReader, ProtoWireType, ProtoWriter, RpcClient'
+      : 'ProtoBytes, ProtoContainers, ProtoMessage, ProtoReader, ProtoWireType, ProtoWriter';
     const importLines: string[] = [
-      `import { ${arkTSImports} } from '@kit.ArkTS';`,
+      `import { collections } from '@kit.ArkTS';`,
       `import { ${wireRuntimeItems} } from '${RUNTIME_MODULE}';`,
     ];
     if (this.options.json) {
       importLines.push(
-        `import { FieldInfo, JsonReader, ProtoJson, ProtoMessage, ProtoValueKind, ProtoVisitor } from '${RUNTIME_MODULE}';`,
+        `import { FieldInfo, JsonReader, ProtoJson, ProtoJsonMessage, ProtoValueKind, ProtoVisitor } from '${RUNTIME_MODULE}';`,
       );
     }
 
@@ -99,10 +99,10 @@ export class ArkTSFileRenderer {
   }
 
   /**
-   * 是否存在至少一个非空的响应解码表，决定是否引入 lang。
+   * 是否存在至少一个 unary service，决定是否引入 RpcClient。
    */
-  private hasServiceRegistry(): boolean {
-    return this.file.services.some((service): boolean => decodableResponses(service, this.file, this.model).length > 0);
+  private hasUnaryService(): boolean {
+    return this.file.services.some((service): boolean => service.methods.length > 0);
   }
 
   /**
@@ -128,11 +128,14 @@ export class ArkTSFileRenderer {
       }
     }
 
-    // 响应解码表引用的响应类型可能定义在别的 proto 文件里。
+    // service 方法引用的请求和响应类型都可能定义在别的 proto 文件里。
     for (const service of this.file.services) {
-      for (const entry of decodableResponses(service, this.file, this.model)) {
-        if (entry.symbol.fileName !== this.file.fileName) {
-          referenced.add(entry.symbol.fullName);
+      for (const entry of resolveServiceMethods(service, this.file, this.model)) {
+        if (entry.input.fileName !== this.file.fileName) {
+          referenced.add(entry.input.fullName);
+        }
+        if (entry.output.fileName !== this.file.fileName) {
+          referenced.add(entry.output.fullName);
         }
       }
     }

@@ -92,12 +92,14 @@ export class ArkTSMessageRenderer {
           return writer.finishBuffer();
         }`),
       indent(renderSource`
-        static decode(bytes: Uint8Array | collections.Uint8Array): ${messageName} {
+        static decode(bytes: ProtoBytes): ${messageName} {
           return ${messageName}.mergeFrom(bytes, new ${messageName}());
         }`),
       indent(renderSource`
-        static mergeFrom(bytes: Uint8Array | collections.Uint8Array, message: ${messageName}): ${messageName} {
-          const reader: ProtoReader = new ProtoReader(bytes);
+        static mergeFrom(bytes: ProtoBytes, message: ${messageName}): ${messageName} {
+          const reader: ProtoReader = bytes instanceof ArrayBuffer
+            ? ProtoReader.fromBuffer(bytes)
+            : new ProtoReader(bytes);
           while (!reader.isAtEnd()) {
             const tag: number = reader.readTag();
             switch (tag) {
@@ -123,7 +125,7 @@ export class ArkTSMessageRenderer {
 
     const messageSource: string = renderSource`
       @Sendable
-      export class ${messageName}${this.json ? ' implements ProtoMessage' : ''} {
+      export class ${messageName} implements ${this.json ? 'ProtoJsonMessage' : 'ProtoMessage'} {
       ${declarations.join('\n')}
 
       ${methodParts.join('\n\n')}

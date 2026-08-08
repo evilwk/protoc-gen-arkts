@@ -3,17 +3,18 @@ import { JsonReader } from '../JsonReader';
 import { quoteJson } from '../JsonSupport';
 import { ProtoJsonWkt } from './ProtoJsonWkt';
 import { ProtoContainers } from '../../ProtoContainers';
-import { ProtoMessage } from '../../visitor/ProtoVisitor';
+import { ProtoBytes } from '../../wire/ProtoBytes';
+import { ProtoJsonMessage } from '../../visitor/ProtoVisitor';
 
 /**
  * Any 注册类型的二进制解码函数。
  */
-export type ProtoJsonAnyDecoder = (bytes: Uint8Array | collections.Uint8Array) => ProtoMessage;
+export type ProtoJsonAnyDecoder = (bytes: ProtoBytes) => ProtoJsonMessage;
 
 /**
  * Any 注册类型的 JSON 解析函数。
  */
-export type ProtoJsonAnyParser = (text: string, ignoreUnknownFields?: boolean) => ProtoMessage;
+export type ProtoJsonAnyParser = (text: string, ignoreUnknownFields?: boolean) => ProtoJsonMessage;
 
 /**
  * Any JSON 解析写入目标。
@@ -62,7 +63,7 @@ export class ProtoJsonAnyRegistry {
       return '{}';
     }
     const registered: RegisteredAnyType = ProtoJsonAnyRegistry.requireType(typeUrl);
-    const message: ProtoMessage = registered.decode(value);
+    const message: ProtoJsonMessage = registered.decode(value);
     const messageJson: string = message.toJson();
     const typeEntry: string = `"@type":${quoteJson(typeUrl)}`;
     if (registered.customJson) {
@@ -117,7 +118,7 @@ export class ProtoJsonAnyRegistry {
     } else {
       messageJson = ProtoJsonWkt.writeRawObject(keys, values);
     }
-    const message: ProtoMessage = registered.fromJson(messageJson, ignoreUnknownFields);
+    const message: ProtoJsonMessage = registered.fromJson(messageJson, ignoreUnknownFields);
     return new ProtoJsonAnyValue(typeUrl, message.encode());
   }
 

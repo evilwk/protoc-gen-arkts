@@ -2,6 +2,9 @@
 
 ## 1.0.3 - 2026-08-04
 
+- 新增统一输入类型 `ProtoBytes`，覆盖原生 `Uint8Array`、`collections.Uint8Array` 和 `ArrayBuffer`。
+- 将基础 wire 契约 `ProtoMessage` 与 JSON 契约 `ProtoJsonMessage` 分离。
+- 新增协议无关的 `RpcClient` 接口，供生成的 unary service 类调用。
 - `ProtoReader` 内部改用原生 `Uint8Array` 存储输入，构造函数放宽为接受 `Uint8Array | collections.Uint8Array`。
   原生输入零拷贝直接使用；`collections.Uint8Array` 输入拷贝一次转为原生，现有调用无需修改。
 - 新增 `ProtoReader.fromBuffer(buffer: ArrayBuffer)`，可直接从网络栈（如 RCP）返回的原生 `ArrayBuffer` 构造 reader，不复制数据。
@@ -13,7 +16,8 @@
 - `readBytes()` 改为一次批量构造 `collections.Uint8Array`，替换原先逐字节的 JS 下标写入。
   拷贝次数不变（Sendable 容器与原生内存之间无视图转换），但减少了 JS 层的逐元素操作。
 - `readBytes()` 行为与返回类型不变，继续返回 `collections.Uint8Array`，供生成代码写入 bytes 字段。
-- 本版本只新增和放宽公共 API，未删除或收紧任何既有接口。生成器 `0.5.x` 生成的代码需要该版本或更高。
+- `ProtoMessage` 现为所有生成 message 的基础 wire 契约；原 JSON 专用实现改用 `ProtoJsonMessage`。
+  生成器 `0.5.x` 生成的代码需要该版本或更高。
 
 ## 1.0.2 - 2026-08-03
 

@@ -12,7 +12,7 @@ function sha256(content) {
 test('matches the locked generated-source SHA-256 baseline', () => {
   assert.equal(
     sha256(generateFixture()),
-    '4a82edd5dfcea665646f7d301e9059390a488598776442ca115214c861e6b807'
+    '001bcfbaa3a509751e6e029486a53809fcae18dda2b9a6b6160e4930de6df43d'
   );
 
   const complex = generateComplex();
@@ -20,8 +20,8 @@ test('matches the locked generated-source SHA-256 baseline', () => {
     'Complex.ets': sha256(readFileSync(join(complex, 'Complex.ets'))),
     'Shared.ets': sha256(readFileSync(join(complex, 'Shared.ets')))
   }, {
-    'Complex.ets': '886651c0cbe5513892388dc0edf5064a18d0ce95f64c30771e8562acc054fccc',
-    'Shared.ets': 'a9ccfd3da4a6457ab5aa3bbb0d018524d4351949639e4bc6afbc35c8a55cd4cc'
+    'Complex.ets': 'f884217d31822ea9420d8a9e97dc9ef4d79e48fd3821592aab805699db9cea1b',
+    'Shared.ets': 'c928c0261099defdd4d7ddf05c508bbec7dba7325d22cd295fdd9d3486d52e39'
   });
 
   const groups = generateGroups();
@@ -30,8 +30,8 @@ test('matches the locked generated-source SHA-256 baseline', () => {
     'legacy/common/Shared.ets': sha256(readFileSync(join(groups, 'legacy/common/Shared.ets'))),
     'v2/gateway/Envelope.ets': sha256(readFileSync(join(groups, 'v2/gateway/Envelope.ets')))
   }, {
-    'legacy/common/Backref.ets': 'e513ff438aa84bf74196f0ce7082e7d2d036bc5c3b6ad084f6af8e44a48b8cc1',
-    'legacy/common/Shared.ets': '74b86ffa438bfe10aa1c713d9823968e0055c81df1c289ec6323faf4b41b6394',
-    'v2/gateway/Envelope.ets': 'f69c0da5203f815669a61dedcd2db8e7ddf675fc881e2b5e962d59b559f03ca1'
+    'legacy/common/Backref.ets': 'a4db8565a5470dd1a09eccbcd1095fdde149b0c50593ccc6e9e1435499a057e2',
+    'legacy/common/Shared.ets': '033be9607d691cbc702cd7a0d535cd844dd15d1750c5c9f8b3e0dcb7cdeda3bb',
+    'v2/gateway/Envelope.ets': 'd22972f52ef40e90720a747cefaa1a646e2514070e3ef452722331edc2569219'
   });
 });

@@ -4,9 +4,10 @@
 
 ## 0.5.0 - 2026-08-04
 
-- 为每个 `service` 生成响应解码表，键为 rpc 方法名，值为响应类型的 `decode`。
-- 生成的 `decode`/`mergeFrom` 签名放宽为 `Uint8Array | collections.Uint8Array`，
-  可直接接收网络栈（如 RCP）返回的原生 `ArrayBuffer` 视图，无需先转成 Sendable 容器。
+- 为每个包含 unary 方法的 `service` 生成同名调用类、强类型实例方法和静态 `decodeResponse()`。
+- 新增协议无关的 `RpcClient` 调用契约；生成代码不绑定网络、TaskPool 或调用上下文。
+- 生成的 `decode`/`mergeFrom` 统一接受 `ProtoBytes`，可直接接收原生 `ArrayBuffer`。
+- 所有生成 message 实现基础 `ProtoMessage`；启用 JSON 时实现 `ProtoJsonMessage`。
 - 嵌套 message、map entry、oneof message 和 packed 字段的递归解码改用 `ProtoReader.readSlice()`，
   通过共享底层内存的视图替换原先每层一次的 `collections.Uint8Array` 分配与逐字节拷贝。
 - 新增生成方法 `encodeBuffer(): ArrayBuffer`，可直接作为 RCP 等网络接口的请求体，

@@ -29,7 +29,7 @@ flowchart LR
 | `DescriptorModel`      | 一次建立并校验文件表、符号表和输出名                 |
 | `ArkTSFileRenderer`    | 规划单文件 import，渲染 enum 与 message              |
 | `ArkTSMessageRenderer` | 组装一个 message 的字段、编解码和辅助方法            |
-| `ArkTSServiceRenderer` | 按 service 渲染响应解码表，不涉及请求编码与传输      |
+| `ArkTSServiceRenderer` | 生成 unary service 调用类与静态响应解码边界          |
 | `FieldModelResolver`   | 把 descriptor 字段转换为已校验的语义模型             |
 | `FieldCodecRenderer`   | 生成 singular、repeated、packed、map、oneof codec    |
 | `JsonCodecRenderer`    | 生成普通 message 的 traverse、toJson 与 fromJson     |
@@ -53,7 +53,7 @@ flowchart LR
 - 新增字段语义：从 `FieldModelResolver` 建模，避免渲染阶段扫描原始 descriptor。
 - 新增文件级声明：在 `ArkTSFileRenderer` 中规划 import 与输出顺序。
 - 新增 wire 能力：在 `runtime/src/main/ets/wire/` 中实现，并补 HarmonyOS 单元测试。
-- service/rpc：本插件只从 service 生成响应解码表（`ArkTSServiceRenderer`），
+- service/rpc：`ArkTSServiceRenderer` 生成协议无关的强类型调用方法与 `decodeResponse()`；网络和 TaskPool 由消费者实现。
 
 ## 确定性与兼容性
 

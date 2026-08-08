@@ -1,7 +1,7 @@
 import { collections } from '@kit.ArkTS';
 import { FieldInfo } from '../visitor/FieldInfo';
 import { ProtoValueKind } from '../visitor/ProtoValueKind';
-import { ProtoMessage, ProtoVisitor } from '../visitor/ProtoVisitor';
+import { ProtoJsonMessage, ProtoVisitor } from '../visitor/ProtoVisitor';
 import { JsonWriter } from './JsonWriter';
 import { formatJsonNumber, quoteJson, encodeBase64 } from './JsonSupport';
 
@@ -55,7 +55,7 @@ export class JsonEncodingVisitor implements ProtoVisitor {
     this.writer.writeRawValue('null');
   }
 
-  visitMessage(value: ProtoMessage, field: FieldInfo): void {
+  visitMessage(value: ProtoJsonMessage, field: FieldInfo): void {
     this.beforeValue(field);
     this.writer.writeRawValue(value.toJson());
   }

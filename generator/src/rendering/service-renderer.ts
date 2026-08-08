@@ -1,29 +1,40 @@
 import type { DescriptorModel } from '../model/descriptor-model.js';
-import type { FileModel, MessageTypeSymbol, ServiceMethodModel, ServiceModel, TypeSymbol } from '../model/symbols.js';
+import type {
+  FileModel,
+  MessageTypeSymbol,
+  ServiceMethodModel,
+  ServiceModel,
+  TypeSymbol,
+} from '../model/symbols.js';
+import { indent } from '../naming.js';
 import { renderSource } from '../source-template.js';
 
-/**
- * 解析 service 中可解码的响应类型符号，按方法声明顺序返回。
- */
-export function decodableResponses(
-  service: ServiceModel,
-  file: FileModel,
-  model: DescriptorModel,
-): Array<{ readonly method: ServiceMethodModel; readonly symbol: MessageTypeSymbol }> {
-  const resolved: Array<{ method: ServiceMethodModel; symbol: MessageTypeSymbol }> = [];
-  for (const method of service.methods) {
-    const context: string = `${file.fileName}: service ${service.protoName} method ${method.protoName}`;
-    const symbol: TypeSymbol = model.requireSymbol(method.outputFullName, context);
-    if (symbol.kind !== 'message') {
-      throw new Error(`${context}: response type ${symbol.fullName} is not a message`);
-    }
-    resolved.push({ method, symbol });
-  }
-  return resolved;
+export interface ResolvedServiceMethod {
+  readonly method: ServiceMethodModel;
+  readonly input: MessageTypeSymbol;
+  readonly output: MessageTypeSymbol;
 }
 
 /**
- * 渲染一个 service 的响应解码注册表。
+ * 解析 service 中的 unary 请求与响应类型，按方法声明顺序返回。
+ */
+export function resolveServiceMethods(
+  service: ServiceModel,
+  file: FileModel,
+  model: DescriptorModel,
+): ResolvedServiceMethod[] {
+  return service.methods.map((method): ResolvedServiceMethod => {
+    const context: string = `${file.fileName}: service ${service.protoName} method ${method.protoName}`;
+    return {
+      method,
+      input: requireMessage(model.requireSymbol(method.inputFullName, `${context}: request`), `${context}: request`),
+      output: requireMessage(model.requireSymbol(method.outputFullName, `${context}: response`), `${context}: response`),
+    };
+  });
+}
+
+/**
+ * 渲染一个 service 的强类型调用 API 与统一响应解码边界。
  */
 export class ArkTSServiceRenderer {
   public constructor(
@@ -33,40 +44,64 @@ export class ArkTSServiceRenderer {
     private readonly imports: ReadonlyMap<string, string>,
   ) {}
 
-  /**
-   * 无可解码方法时返回 undefined，避免产出空注册表。
-   */
   public render(): string | undefined {
-    const entries: string[] = [];
-    for (const entry of decodableResponses(this.service, this.file, this.model)) {
-      const { fileName, arkName, fullName } = entry.symbol;
-      const arkType: string = fileName === this.file.fileName ? arkName : (this.imports.get(fullName) ?? arkName);
-      entries.push(`['${entry.method.protoName}', ${arkType}.decode as ${this.decoderTypeName()}]`);
-    }
-
-    if (entries.length === 0) {
+    const methods: ResolvedServiceMethod[] = resolveServiceMethods(this.service, this.file, this.model);
+    if (methods.length === 0) {
       return undefined;
     }
 
-    const decoderType: string = this.decoderTypeName();
-    const mapName: string = this.registryName();
+    const serviceName: string = this.service.arkName;
+    const rpcMethods: string = methods.map((entry): string => this.renderRpcMethod(entry)).join('\n\n');
+    const decodeCases: string = methods
+      .map((entry): string => `case '${entry.method.protoName}':\n  return ${this.arkType(entry.output)}.decode(bytes);`)
+      .join('\n');
+    const errorMessage: string = `\`Unknown RPC response: \${${serviceName}.SERVICE_NAME}/\${method}\``;
+
     return renderSource`
-      type ${decoderType} = (bytes: Uint8Array | collections.Uint8Array) => lang.ISendable;
+      export class ${serviceName} {
+        static readonly SERVICE_NAME: string = '${this.service.protoName}';
 
-      export const ${mapName}: Map<string, ${decoderType}> = new Map<string, ${decoderType}>([
-      ${entries.map((entry): string => `  ${entry}`).join(',\n')}
-      ]);`;
+        private readonly client: RpcClient;
+
+        constructor(client: RpcClient) {
+          this.client = client;
+        }
+
+      ${indent(rpcMethods)}
+
+        static decodeResponse(method: string, bytes: ProtoBytes): ProtoMessage {
+          switch (method) {
+      ${indent(decodeCases, 6)}
+            default:
+              throw new Error(${errorMessage});
+          }
+        }
+      }`;
   }
 
-  private decoderTypeName(): string {
-    return `${this.service.arkName}RspDecoder`;
+  private renderRpcMethod(entry: ResolvedServiceMethod): string {
+    const requestType: string = this.arkType(entry.input);
+    const responseType: string = this.arkType(entry.output);
+    return renderSource`
+      ${entry.method.arkName}(request: ${requestType}): Promise<${responseType}> {
+        return this.client.invoke<${responseType}>(
+          ${this.service.arkName}.SERVICE_NAME,
+          '${entry.method.protoName}',
+          request
+        );
+      }`;
   }
 
-  private registryName(): string {
-    return `${toSnakeUpper(this.service.arkName)}_RSP_DECODERS`;
+  private arkType(symbol: MessageTypeSymbol): string {
+    return symbol.fileName === this.file.fileName
+      ? symbol.arkName
+      : (this.imports.get(symbol.fullName) ?? symbol.arkName);
   }
 }
 
-function toSnakeUpper(value: string): string {
-  return value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+function requireMessage(symbol: TypeSymbol, context: string): MessageTypeSymbol {
+  if (symbol.kind !== 'message') {
+    throw new Error(`${context}: type ${symbol.fullName} is not a message`);
+  }
+  return symbol;
 }

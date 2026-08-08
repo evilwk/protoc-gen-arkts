@@ -2,7 +2,7 @@ import { collections } from '@kit.ArkTS';
 import { describe, expect, it } from '@ohos/hypium';
 import { FieldInfo } from '../main/ets/visitor/FieldInfo';
 import { ProtoValueKind } from '../main/ets/visitor/ProtoValueKind';
-import { ProtoMessage, ProtoVisitor } from '../main/ets/visitor/ProtoVisitor';
+import { ProtoJsonMessage, ProtoVisitor } from '../main/ets/visitor/ProtoVisitor';
 import {
   JsonEncodingVisitor
 } from '../main/ets/json/JsonEncodingVisitor';
@@ -20,9 +20,14 @@ function didThrow(action: () => void): boolean {
   }
 }
 
-class JsonNestedMessage implements ProtoMessage {
+@Sendable
+class JsonNestedMessage implements ProtoJsonMessage {
   encode(): collections.Uint8Array {
     return new collections.Uint8Array(0);
+  }
+
+  encodeBuffer(): ArrayBuffer {
+    return new ArrayBuffer(0);
   }
 
   traverse(visitor: ProtoVisitor): void {

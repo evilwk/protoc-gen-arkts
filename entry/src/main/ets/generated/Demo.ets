@@ -2,9 +2,9 @@
 
 // Plugin version: 0.5.0
 
-import { collections, lang } from '@kit.ArkTS';
-import { ProtoContainers, ProtoReader, ProtoWireType, ProtoWriter } from 'protoc-gen-arkts-runtime';
-import { FieldInfo, JsonReader, ProtoJson, ProtoMessage, ProtoValueKind, ProtoVisitor } from 'protoc-gen-arkts-runtime';
+import { collections } from '@kit.ArkTS';
+import { ProtoBytes, ProtoContainers, ProtoMessage, ProtoReader, ProtoWireType, ProtoWriter, RpcClient } from 'protoc-gen-arkts-runtime';
+import { FieldInfo, JsonReader, ProtoJson, ProtoJsonMessage, ProtoValueKind, ProtoVisitor } from 'protoc-gen-arkts-runtime';
 
 export enum Status {
   STATUS_UNKNOWN = 0,
@@ -13,7 +13,7 @@ export enum Status {
 }
 
 @Sendable
-export class Profile implements ProtoMessage {
+export class Profile implements ProtoJsonMessage {
   nickname: string = '';
   age: number = 0;
   private level: number = 0;
@@ -64,12 +64,14 @@ export class Profile implements ProtoMessage {
     return writer.finishBuffer();
   }
 
-  static decode(bytes: Uint8Array | collections.Uint8Array): Profile {
+  static decode(bytes: ProtoBytes): Profile {
     return Profile.mergeFrom(bytes, new Profile());
   }
 
-  static mergeFrom(bytes: Uint8Array | collections.Uint8Array, message: Profile): Profile {
-    const reader: ProtoReader = new ProtoReader(bytes);
+  static mergeFrom(bytes: ProtoBytes, message: Profile): Profile {
+    const reader: ProtoReader = bytes instanceof ArrayBuffer
+      ? ProtoReader.fromBuffer(bytes)
+      : new ProtoReader(bytes);
     while (!reader.isAtEnd()) {
       const tag: number = reader.readTag();
       switch (tag) {
@@ -140,7 +142,7 @@ export class Profile implements ProtoMessage {
 }
 
 @Sendable
-export class Envelope implements ProtoMessage {
+export class Envelope implements ProtoJsonMessage {
   code: number = 0;
   message: string = '';
   status: number = 0;
@@ -245,12 +247,14 @@ export class Envelope implements ProtoMessage {
     return writer.finishBuffer();
   }
 
-  static decode(bytes: Uint8Array | collections.Uint8Array): Envelope {
+  static decode(bytes: ProtoBytes): Envelope {
     return Envelope.mergeFrom(bytes, new Envelope());
   }
 
-  static mergeFrom(bytes: Uint8Array | collections.Uint8Array, message: Envelope): Envelope {
-    const reader: ProtoReader = new ProtoReader(bytes);
+  static mergeFrom(bytes: ProtoBytes, message: Envelope): Envelope {
+    const reader: ProtoReader = bytes instanceof ArrayBuffer
+      ? ProtoReader.fromBuffer(bytes)
+      : new ProtoReader(bytes);
     while (!reader.isAtEnd()) {
       const tag: number = reader.readTag();
       switch (tag) {
@@ -450,9 +454,39 @@ export class Envelope implements ProtoMessage {
   }
 }
 
-type DemoServiceRspDecoder = (bytes: Uint8Array | collections.Uint8Array) => lang.ISendable;
+export class DemoService {
+  static readonly SERVICE_NAME: string = 'DemoService';
 
-export const DEMO_SERVICE_RSP_DECODERS: Map<string, DemoServiceRspDecoder> = new Map<string, DemoServiceRspDecoder>([
-  ['GetProfile', Profile.decode as DemoServiceRspDecoder],
-  ['GetEnvelope', Envelope.decode as DemoServiceRspDecoder]
-]);
+  private readonly client: RpcClient;
+
+  constructor(client: RpcClient) {
+    this.client = client;
+  }
+
+  getProfile(request: Profile): Promise<Profile> {
+    return this.client.invoke<Profile>(
+      DemoService.SERVICE_NAME,
+      'GetProfile',
+      request
+    );
+  }
+
+  getEnvelope(request: Profile): Promise<Envelope> {
+    return this.client.invoke<Envelope>(
+      DemoService.SERVICE_NAME,
+      'GetEnvelope',
+      request
+    );
+  }
+
+  static decodeResponse(method: string, bytes: ProtoBytes): ProtoMessage {
+    switch (method) {
+      case 'GetProfile':
+        return Profile.decode(bytes);
+      case 'GetEnvelope':
+        return Envelope.decode(bytes);
+      default:
+        throw new Error(`Unknown RPC response: ${DemoService.SERVICE_NAME}/${method}`);
+    }
+  }
+}
