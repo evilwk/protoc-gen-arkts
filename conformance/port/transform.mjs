@@ -7,8 +7,10 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const RUNTIME_RULES = [
-  // 运行时入口：collections/util 全部落到原生实现。
-  [/^import \{ collections(?:, util)? \} from '@kit\.ArkTS';\n/m, ''],
+  // 运行时入口：collections/util/lang 全部落到原生实现。
+  [/^import \{ collections(?:, (?:lang|util))? \} from '@kit\.ArkTS';\n/m, ''],
+  // Node 无 Sendable 对应物，移除基础消息接口的 Sendable 父接口。
+  [/ extends lang\.ISendable/g, ''],
   // const enum 不属于 TS 的可擦除语法，Node 的类型剥离拒绝它；退化为普通 enum。
   [/export const enum /g, 'export enum '],
   // ArkTS 的 encodeInto 返回新数组，语义等于原生 encode；
